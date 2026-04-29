@@ -3,16 +3,26 @@ import pandas as pd
 import io
 import openpyxl
 from datetime import datetime
-import random # Add this to the very top of your file with the other imports
+import random # Added for the temporary random data generator
 
+# --- 1. SESSION STATE SETUP ---
+# This acts as a temporary "shopping cart" to hold multiple receipts
+if 'expenses' not in st.session_state:
+    st.session_state.expenses = []
+
+# --- 2. AI EXTRACTION FUNCTION (Simulated) ---
 def extract_receipt_data(uploaded_file):
-    # Generating fake random data to prove the loop works
+    """
+    Simulated AI: Generating fake random data to prove the loop and sorting work.
+    In the future, replace this with a call to OpenAI or Google Document AI.
+    """
     random_day = random.randint(1, 28)
     random_amount = round(random.uniform(5.00, 100.00), 2)
     vat = round(random_amount * 0.20, 2)
     total = round(random_amount + vat, 2)
     vendors = ["Costa Coffee", "Tesco", "Shell Petrol", "WHSmith", "National Express"]
     
+    # We use YYYY-MM-DD here temporarily so the computer can sort it chronologically
     return {
         "Date": f"2026-04-{random_day:02d}", 
         "Vendor": random.choice(vendors),
@@ -20,26 +30,6 @@ def extract_receipt_data(uploaded_file):
         "Amount Excl VAT": random_amount,
         "VAT": vat,
         "Total Amount": total
-    }
-
-# --- 1. SESSION STATE SETUP ---
-if 'expenses' not in st.session_state:
-    st.session_state.expenses = []
-
-# --- 2. AI EXTRACTION FUNCTION (Simulated) ---
-def extract_receipt_data(uploaded_file):
-    """
-    Simulated AI: In the future, this is where you ask the real AI to 
-    specifically extract the Vendor, Subtotal, Tax, and Total.
-    """
-    # We use YYYY-MM-DD here temporarily so the computer can sort it alphabetically
-    return {
-        "Date": "2026-04-15", # Example date for sorting
-        "Vendor": "Example Vendor Ltd",
-        "File Name": uploaded_file.name,
-        "Amount Excl VAT": 12.08,
-        "VAT": 2.42,
-        "Total Amount": 14.50
     }
 
 # --- 3. USER INTERFACE ---
