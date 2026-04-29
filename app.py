@@ -3,6 +3,24 @@ import pandas as pd
 import io
 import openpyxl
 from datetime import datetime
+import random # Add this to the very top of your file with the other imports
+
+def extract_receipt_data(uploaded_file):
+    # Generating fake random data to prove the loop works
+    random_day = random.randint(1, 28)
+    random_amount = round(random.uniform(5.00, 100.00), 2)
+    vat = round(random_amount * 0.20, 2)
+    total = round(random_amount + vat, 2)
+    vendors = ["Costa Coffee", "Tesco", "Shell Petrol", "WHSmith", "National Express"]
+    
+    return {
+        "Date": f"2026-04-{random_day:02d}", 
+        "Vendor": random.choice(vendors),
+        "File Name": uploaded_file.name,
+        "Amount Excl VAT": random_amount,
+        "VAT": vat,
+        "Total Amount": total
+    }
 
 # --- 1. SESSION STATE SETUP ---
 if 'expenses' not in st.session_state:
