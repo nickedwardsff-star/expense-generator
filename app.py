@@ -49,12 +49,43 @@ if uploaded_files and employee_name:
     if st.button(f"Process {len(uploaded_files)} Receipt(s)"):
         with st.spinner("AI is analyzing the documents..."):
             
-            # Loop through every file you uploaded
-            for file in uploaded_files:
-                extracted_data = extract_receipt_data(file)
-                st.session_state.expenses.append(extracted_data)
+            ## 3. Loop through the receipts and fill in the rows
+        start_row = 6 
+        
+        # --- NEW HELPER TOOL ---
+        def split_pounds_pence(amount):
+            # Forces the amount to have exactly 2 decimal places (e.g., "14.50")
+            formatted_amount = f"{float(amount):.2f}"
+            # Splits the text at the full stop
+            parts = formatted_amount.split('.')
+            # Returns the two parts as whole numbers: (Pounds, Pence)
+            return int(parts), int(parts)
+
+        # We loop through our newly sorted DataFrame
+        for index, expense in enumerate(df.to_dict('records')):
+            current_row = start_row + index
             
-            st.success(f"Successfully processed {len(uploaded_files)} receipts!")
+            ws.cell(row=current_row, column=1, value=expense["Date"])         
+            ws.cell(row=current_row, column=2, value=expense["Vendor"])       
+            ws.cell(row=current_row, column=3, value=expense["File Name"])    
+            
+            # --- THE POUNDS & PENCE SPLIT ---
+            # 1. Split the Total Amount
+            total_pounds, total_pence = split_pounds_pence(expense["Total Amount"])
+            
+            # 2. Write them to separate columns 
+            # (Change column=9 and column=10 to match wherever they actually live in your template!)
+            ws.cell(row=current_row, column=9, value=total_pounds) # E.g., Col I: Total Pounds
+            ws.cell(row=current_row, column=10, value=total_pence) # E.g., Col J: Total Pence
+            
+            # You can also do the exact same thing for the VAT and Excl VAT!
+            vat_pounds, vat_pence = split_pounds_pence(expense["VAT"])
+            ws.cell(row=current_row, column=7, value=vat_pounds)  # E.g., Col G: VAT Pounds
+            ws.cell(row=current_row, column=8, value=vat_pence)   # E.g., Col H: VAT Pence
+            
+            excl_pounds, excl_pence = split_pounds_pence(expense["Amount Excl VAT"])
+            ws.cell(row=current_row, column=5, value=excl_pounds) # E.g., Col E: Excl Pounds
+            ws.cell(row=current_row, column=6, value=excl_pence)  # E.g., Col F: Excl Pence
 
 # --- 4. DISPLAY AND TEMPLATE DOWNLOAD ---
 if len(st.session_state.expenses) > 0:
