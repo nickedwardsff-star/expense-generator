@@ -35,7 +35,7 @@ def split_pounds_pence(amount):
     formatted_amount = f"{float(amount):.2f}"
     parts = formatted_amount.split('.')
     # The grabs the pounds, the grabs the pence
-    return int(parts '), int(parts ')
+    return int(parts), int(parts)
 
 # --- 4. USER INTERFACE ---
 st.set_page_config(page_title="My Expense Form", layout="centered")
