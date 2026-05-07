@@ -16,17 +16,22 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # --- 2. THE REAL AI EXTRACTION ---
 def file_to_base64_image(uploaded_file):
+    """Converts images/PDFs to Base64. Now uses a High-Def zoom for PDFs!"""
     if uploaded_file.type == 'application/pdf':
         doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
         page = doc.load_page(0) 
-        pix = page.get_pixmap()
+        
+        # THE FIX: Zoom in 2x to make the PDF crystal clear for the AI
+        zoom_matrix = fitz.Matrix(2, 2) 
+        pix = page.get_pixmap(matrix=zoom_matrix)
+        
         img_bytes = pix.tobytes("png")
         return base64.b64encode(img_bytes).decode('utf-8')
     else:
         return base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
 
-# Helper to safely force numbers to decimals (removes £ signs if AI adds them)
 def to_float(val):
+    """Helper to safely force numbers to decimals."""
     try:
         if isinstance(val, str):
             val = val.replace('£', '').replace('$', '').replace(',', '').strip()
@@ -46,7 +51,8 @@ def extract_receipt_data(uploaded_file):
     - "VAT": The tax amount (number only, e.g. 2.50).
     - "Total Amount": The final total paid (number only, e.g. 15.00).
     
-    If VAT is not shown, calculate it (assume UK standard 20% if applicable, or put 0 if it's 0). 
+    If VAT is not explicitly shown, calculate it (assume standard 20% if it looks like a UK receipt).
+    If you absolutely cannot read a value, guess based on context. Do not return nulls.
     Return ONLY the JSON object, nothing else.
     """
     
@@ -60,37 +66,35 @@ def extract_receipt_data(uploaded_file):
                     {"type": "text", "text": prompt},
                     {
                         "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                        # We use 'high' detail mode to force GPT-4o to look closely
+                        "image_url": {
+                            "url": f"data:image/png;base64,{base64_image}",
+                            "detail": "high" 
+                        }
                     }
                 ]
             }
         ]
     )
     
-    # 1. Safely pull the text from the AI response
     try:
         content = response.choices.message.content
     except Exception:
         content = str(response) 
         
-    # 2. Clean up any weird formatting the AI added
     if "```json" in content:
         content = content.split("```json").split("```").strip()
     elif "```" in content:
         content = content.split("```").split("```").strip()
         
-    # 3. Parse the data
     try:
         data = json.loads(content)
     except Exception:
         data = {}
         
-    # 4. BULLETPROOF UN-NESTING (This fixes your error!)
-    # If the AI wrapped the data in a list, this digs it out
     while isinstance(data, list):
         data = data if len(data) > 0 else {}
         
-    # If the AI nested the data inside an invisible folder, this finds it
     if isinstance(data, dict) and "Date" not in data:
         for key, value in data.items():
             if isinstance(value, dict) and "Date" in value:
@@ -100,14 +104,14 @@ def extract_receipt_data(uploaded_file):
                 data = value
                 break
 
-    # 5. Build the final, guaranteed dictionary
+    # THE FALLBACK FIX: Handles if the AI explicitly says "null"
     clean_data = {
-        "Date": str(data.get("Date", datetime.now().strftime("%Y-%m-%d"))),
-        "Vendor": str(data.get("Vendor", "Unknown")),
+        "Date": str(data.get("Date") or datetime.now().strftime("%Y-%m-%d")),
+        "Vendor": str(data.get("Vendor") or "Unknown Vendor"),
         "File Name": uploaded_file.name,
-        "Amount Excl VAT": to_float(data.get("Amount Excl VAT", 0.00)),
-        "VAT": to_float(data.get("VAT", 0.00)),
-        "Total Amount": to_float(data.get("Total Amount", 0.00))
+        "Amount Excl VAT": to_float(data.get("Amount Excl VAT")),
+        "VAT": to_float(data.get("VAT")),
+        "Total Amount": to_float(data.get("Total Amount"))
     }
     
     return clean_data
@@ -129,7 +133,7 @@ uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg',
 
 if uploaded_files and employee_name:
     if st.button(f"Process {len(uploaded_files)} Receipt(s)"):
-        with st.spinner("AI is reading the documents (this takes a few seconds per receipt)..."):
+        with st.spinner("AI is reading the documents in High-Def (this takes a few seconds per receipt)..."):
             for file in uploaded_files:
                 try:
                     extracted_data = extract_receipt_data(file)
