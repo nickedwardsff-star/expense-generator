@@ -6,31 +6,35 @@ from datetime import datetime
 import json
 import base64
 from openai import OpenAI
-import fitz  # This is PyMuPDF (Reads your PDFs)
+import fitz  # PyMuPDF
 
 # --- 1. SETUP & AUTHENTICATION ---
 if 'expenses' not in st.session_state:
     st.session_state.expenses = []
 
-# Securely grab the API key from Streamlit Secrets
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # --- 2. THE REAL AI EXTRACTION ---
 def file_to_base64_image(uploaded_file):
-    """Converts images or PDFs into the format OpenAI needs to 'see' them."""
     if uploaded_file.type == 'application/pdf':
-        # Open the PDF and take a picture of the first page
         doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
         page = doc.load_page(0) 
         pix = page.get_pixmap()
         img_bytes = pix.tobytes("png")
         return base64.b64encode(img_bytes).decode('utf-8')
     else:
-        # If it's already an image (jpg/png), just encode it
         return base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
 
+# Helper to safely force numbers to decimals (removes £ signs if AI adds them)
+def to_float(val):
+    try:
+        if isinstance(val, str):
+            val = val.replace('£', '').replace('$', '').replace(',', '').strip()
+        return float(val)
+    except:
+        return 0.00
+
 def extract_receipt_data(uploaded_file):
-    """Sends the document to GPT-4o and asks for specific financial data."""
     base64_image = file_to_base64_image(uploaded_file)
     
     prompt = """
@@ -63,36 +67,54 @@ def extract_receipt_data(uploaded_file):
         ]
     )
     
-    # --- ROCKET-PROOF PARSING ---
-    # This completely bypasses the 'list' error if it happens.
+    # 1. Safely pull the text from the AI response
     try:
         content = response.choices.message.content
     except Exception:
-        # Fallback dictionary extraction
-        resp_dict = response.dict() if hasattr(response, 'dict') else response.model_dump()
-        content = resp_dict['choices']['message']['content']
-
-    # Read the text and turn it into a dictionary
-    extracted_data = json.loads(content)
-    
-    # Safety Check: If the AI accidentally returned the JSON inside a list []
-    if isinstance(extracted_data, list):
-        extracted_data = extracted_data
+        content = str(response) 
         
-    extracted_data["File Name"] = uploaded_file.name
+    # 2. Clean up any weird formatting the AI added
+    if "```json" in content:
+        content = content.split("```json").split("```").strip()
+    elif "```" in content:
+        content = content.split("```").split("```").strip()
+        
+    # 3. Parse the data
+    try:
+        data = json.loads(content)
+    except Exception:
+        data = {}
+        
+    # 4. BULLETPROOF UN-NESTING (This fixes your error!)
+    # If the AI wrapped the data in a list, this digs it out
+    while isinstance(data, list):
+        data = data if len(data) > 0 else {}
+        
+    # If the AI nested the data inside an invisible folder, this finds it
+    if isinstance(data, dict) and "Date" not in data:
+        for key, value in data.items():
+            if isinstance(value, dict) and "Date" in value:
+                data = value
+                break
+            elif isinstance(value, list) and len(value) > 0 and isinstance(value, dict) and "Date" in value:
+                data = value
+                break
+
+    # 5. Build the final, guaranteed dictionary
+    clean_data = {
+        "Date": str(data.get("Date", datetime.now().strftime("%Y-%m-%d"))),
+        "Vendor": str(data.get("Vendor", "Unknown")),
+        "File Name": uploaded_file.name,
+        "Amount Excl VAT": to_float(data.get("Amount Excl VAT", 0.00)),
+        "VAT": to_float(data.get("VAT", 0.00)),
+        "Total Amount": to_float(data.get("Total Amount", 0.00))
+    }
     
-    return extracted_data
+    return clean_data
 
 # --- 3. HELPER TOOL FOR POUNDS & PENCE ---
 def split_pounds_pence(amount):
-    """Forces the amount to have 2 decimal places and splits it without brackets."""
-    try:
-        # Failsafe in case AI leaves the amount blank or returns letters
-        amount = float(amount)
-    except:
-        amount = 0.00
-        
-    formatted_amount = f"{amount:.2f}"
+    formatted_amount = f"{float(amount):.2f}"
     pounds, pence = formatted_amount.split('.')
     return int(pounds), int(pence)
 
