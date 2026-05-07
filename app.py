@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 import io
 import openpyxl
+from openpyxl.styles import Font # NEW: Allows us to make the totals bold!
 from datetime import datetime
 import json
 import base64
 from openai import OpenAI
 import fitz  # PyMuPDF
-import re  # New library to slice the text open!
+import re  
 
 # --- 1. SETUP & AUTHENTICATION ---
 if 'expenses' not in st.session_state:
@@ -25,23 +26,18 @@ def to_float(val):
         return 0.00
 
 def safe_extract_json_from_response(response):
-    """The Ultimate Swiss Army Knife to open the AI's envelope, no matter the server version."""
-    # Method 1: The standard modern way
     try:
         return response.choices.message.content
     except: pass
     
-    # Method 2: The older dictionary way
     try:
         return response['choices']['message']['content']
     except: pass
     
-    # Method 3: The Pydantic dump way
     try:
         return response.model_dump()['choices']['message']['content']
     except: pass
     
-    # Method 4: The Nuclear Option (Physically slices the JSON out of the raw text)
     raw = str(response)
     match = re.search(r"content='(\{.*?\})', refusal", raw, re.DOTALL)
     if match:
@@ -98,7 +94,6 @@ def extract_receipt_data(uploaded_file):
         messages=[{"role": "user", "content": messages_payload}]
     )
     
-    # We now use our indestructible Swiss Army knife here!
     content = safe_extract_json_from_response(response)
         
     if "```json" in content:
@@ -126,8 +121,7 @@ def extract_receipt_data(uploaded_file):
         "File Name": uploaded_file.name,
         "Amount Excl VAT": to_float(data.get("Amount Excl VAT")),
         "VAT": to_float(data.get("VAT")),
-        "Total Amount": to_float(data.get("Total Amount")),
-        "_raw": content 
+        "Total Amount": to_float(data.get("Total Amount"))
     }
     
     return clean_data
@@ -153,10 +147,7 @@ if uploaded_files and employee_name:
             for file in uploaded_files:
                 try:
                     extracted_data = extract_receipt_data(file)
-                    # We can remove the raw text now since we know it works, but keeping it invisible for safety!
-                    extracted_data.pop("_raw", None)
                     st.session_state.expenses.append(extracted_data)
-                        
                 except Exception as e:
                     st.error(f"Could not process {file.name}. Error: {e}")
                     
@@ -182,6 +173,7 @@ if len(st.session_state.expenses) > 0:
         
         start_row = 6 
         
+        # 1. Write all the individual receipts
         for index, expense in enumerate(df.to_dict('records')):
             current_row = start_row + index
             
@@ -200,6 +192,30 @@ if len(st.session_state.expenses) > 0:
             total_pounds, total_pence = split_pounds_pence(expense["Total Amount"])
             ws.cell(row=current_row, column=9, value=total_pounds) 
             ws.cell(row=current_row, column=10, value=total_pence) 
+            
+        # --- NEW: GRAND TOTALS ROW ---
+        # Skip one line below the last receipt
+        totals_row = start_row + len(df) + 1 
+        bold_font = Font(bold=True)
+        
+        # Write the label
+        ws.cell(row=totals_row, column=2, value="GRAND TOTAL").font = bold_font
+        
+        # Sum and split the Excl VAT
+        total_excl_pounds, total_excl_pence = split_pounds_pence(df["Amount Excl VAT"].sum())
+        ws.cell(row=totals_row, column=5, value=total_excl_pounds).font = bold_font
+        ws.cell(row=totals_row, column=6, value=total_excl_pence).font = bold_font
+        
+        # Sum and split the VAT
+        total_vat_pounds, total_vat_pence = split_pounds_pence(df["VAT"].sum())
+        ws.cell(row=totals_row, column=7, value=total_vat_pounds).font = bold_font
+        ws.cell(row=totals_row, column=8, value=total_vat_pence).font = bold_font
+        
+        # Sum and split the Final Total
+        total_all_pounds, total_all_pence = split_pounds_pence(df["Total Amount"].sum())
+        ws.cell(row=totals_row, column=9, value=total_all_pounds).font = bold_font
+        ws.cell(row=totals_row, column=10, value=total_all_pence).font = bold_font
+        # -----------------------------
         
         buffer = io.BytesIO()
         wb.save(buffer)
