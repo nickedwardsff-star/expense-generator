@@ -26,13 +26,15 @@ def extract_receipt_data(uploaded_file):
         "Total Amount": total
     }
 
-# --- 3. HELPER TOOL FOR POUNDS & PENCE ---
+# --- 3. HELPER TOOL FOR POUNDS & PENCE (BRACKET-FREE VERSION) ---
 def split_pounds_pence(amount):
-    """Forces the amount to have 2 decimal places and splits it into two numbers."""
+    """Forces the amount to have 2 decimal places and splits it without using brackets."""
     formatted_amount = f"{float(amount):.2f}"
-    parts = formatted_amount.split('.')
-    # THE FIX: Grabs the exact first and second parts of the split number
-    return int(parts), int(parts)
+    
+    # This splits the number at the full stop and assigns them directly to words
+    pounds, pence = formatted_amount.split('.')
+    
+    return int(pounds), int(pence)
 
 # --- 4. USER INTERFACE ---
 st.set_page_config(page_title="My Expense Form", layout="centered")
