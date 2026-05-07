@@ -15,15 +15,16 @@ if 'expenses' not in st.session_state:
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # --- 2. THE REAL AI EXTRACTION ---
+# --- 2. THE REAL AI EXTRACTION ---
 def file_to_base64_image(uploaded_file):
-    """Converts images/PDFs to Base64. Now uses a High-Def zoom for PDFs!"""
+    """Converts images/PDFs to Base64. Forces a white background so text is visible."""
     if uploaded_file.type == 'application/pdf':
         doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
         page = doc.load_page(0) 
         
-        # THE FIX: Zoom in 2x to make the PDF crystal clear for the AI
         zoom_matrix = fitz.Matrix(2, 2) 
-        pix = page.get_pixmap(matrix=zoom_matrix)
+        # THE FIX: alpha=False forces a solid white background!
+        pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
         
         img_bytes = pix.tobytes("png")
         return base64.b64encode(img_bytes).decode('utf-8')
