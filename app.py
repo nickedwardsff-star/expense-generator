@@ -3,55 +3,100 @@ import pandas as pd
 import io
 import openpyxl
 from datetime import datetime
-import random
+import json
+import base64
+from openai import OpenAI
+import fitz  # This is PyMuPDF (Reads your PDFs)
 
-# --- 1. SESSION STATE SETUP ---
+# --- 1. SETUP & AUTHENTICATION ---
 if 'expenses' not in st.session_state:
     st.session_state.expenses = []
 
-# --- 2. AI EXTRACTION FUNCTION (Simulated) ---
-def extract_receipt_data(uploaded_file):
-    random_day = random.randint(1, 28)
-    random_amount = round(random.uniform(5.00, 100.00), 2)
-    vat = round(random_amount * 0.20, 2)
-    total = round(random_amount + vat, 2)
-    vendors = ["Costa Coffee", "Tesco", "Shell Petrol", "WHSmith", "National Express"]
-    
-    return {
-        "Date": f"2026-04-{random_day:02d}", 
-        "Vendor": random.choice(vendors),
-        "File Name": uploaded_file.name,
-        "Amount Excl VAT": random_amount,
-        "VAT": vat,
-        "Total Amount": total
-    }
+# Securely grab the API key from Streamlit Secrets
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# --- 3. HELPER TOOL FOR POUNDS & PENCE (BRACKET-FREE VERSION) ---
+# --- 2. THE REAL AI EXTRACTION ---
+def file_to_base64_image(uploaded_file):
+    """Converts images or PDFs into the format OpenAI needs to 'see' them."""
+    if uploaded_file.type == 'application/pdf':
+        # Open the PDF and take a picture of the first page
+        doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
+        page = doc.load_page(0) 
+        pix = page.get_pixmap()
+        img_bytes = pix.tobytes("png")
+        return base64.b64encode(img_bytes).decode('utf-8')
+    else:
+        # If it's already an image (jpg/png), just encode it
+        return base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
+
+def extract_receipt_data(uploaded_file):
+    """Sends the document to GPT-4o and asks for specific financial data."""
+    base64_image = file_to_base64_image(uploaded_file)
+    
+    prompt = """
+    You are an expert accountant. Analyze this receipt and extract the data. 
+    Return a valid JSON object with EXACTLY these keys:
+    - "Date": Format as YYYY-MM-DD.
+    - "Vendor": The name of the shop or company.
+    - "Amount Excl VAT": The subtotal before tax (number only, e.g. 12.50).
+    - "VAT": The tax amount (number only, e.g. 2.50).
+    - "Total Amount": The final total paid (number only, e.g. 15.00).
+    
+    If VAT is not shown, calculate it (assume UK standard 20% if applicable, or put 0 if it's 0). 
+    Return ONLY the JSON object, nothing else.
+    """
+    
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        response_format={ "type": "json_object" },
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                    }
+                ]
+            }
+        ]
+    )
+    
+    # Read the AI's response and turn it into a Python dictionary
+    extracted_data = json.loads(response.choices.message.content)
+    
+    # Add the file name manually so we have the reference
+    extracted_data["File Name"] = uploaded_file.name
+    
+    return extracted_data
+
+# --- 3. HELPER TOOL FOR POUNDS & PENCE ---
 def split_pounds_pence(amount):
-    """Forces the amount to have 2 decimal places and splits it without using brackets."""
+    """Forces the amount to have 2 decimal places and splits it without brackets."""
     formatted_amount = f"{float(amount):.2f}"
-    
-    # This splits the number at the full stop and assigns them directly to words
     pounds, pence = formatted_amount.split('.')
-    
     return int(pounds), int(pence)
 
 # --- 4. USER INTERFACE ---
 st.set_page_config(page_title="My Expense Form", layout="centered")
 
 st.title("🧾 Bulk Expense Generator")
-st.write("Upload all your receipts for the month. The system will sort them by date and fill out your form.")
+st.write("Upload all your receipts for the month. The AI will read them, sort them by date, and fill out your form.")
 
 employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe")
-
 uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True)
 
 if uploaded_files and employee_name:
     if st.button(f"Process {len(uploaded_files)} Receipt(s)"):
-        with st.spinner("AI is analyzing the documents..."):
+        with st.spinner("AI is analyzing the documents (this takes a few seconds per receipt)..."):
             for file in uploaded_files:
-                extracted_data = extract_receipt_data(file)
-                st.session_state.expenses.append(extracted_data)
+                try:
+                    extracted_data = extract_receipt_data(file)
+                    st.session_state.expenses.append(extracted_data)
+                except Exception as e:
+                    st.error(f"Could not process {file.name}. Error: {e}")
+                    
             st.success(f"Successfully processed {len(uploaded_files)} receipts!")
 
 # --- 5. DISPLAY AND TEMPLATE DOWNLOAD ---
