@@ -7,6 +7,7 @@ import json
 import base64
 from openai import OpenAI
 import fitz  # PyMuPDF
+import re  # New library to slice the text open!
 
 # --- 1. SETUP & AUTHENTICATION ---
 if 'expenses' not in st.session_state:
@@ -23,17 +24,44 @@ def to_float(val):
     except:
         return 0.00
 
+def safe_extract_json_from_response(response):
+    """The Ultimate Swiss Army Knife to open the AI's envelope, no matter the server version."""
+    # Method 1: The standard modern way
+    try:
+        return response.choices.message.content
+    except: pass
+    
+    # Method 2: The older dictionary way
+    try:
+        return response['choices']['message']['content']
+    except: pass
+    
+    # Method 3: The Pydantic dump way
+    try:
+        return response.model_dump()['choices']['message']['content']
+    except: pass
+    
+    # Method 4: The Nuclear Option (Physically slices the JSON out of the raw text)
+    raw = str(response)
+    match = re.search(r"content='(\{.*?\})', refusal", raw, re.DOTALL)
+    if match:
+        return match.group(1).replace('\\n', '\n').replace('\\"', '"')
+    
+    match = re.search(r'content="(\{.*?\})", refusal', raw, re.DOTALL)
+    if match:
+        return match.group(1).replace('\\n', '\n')
+        
+    return "{}"
+
 def extract_receipt_data(uploaded_file):
     extracted_text = ""
     base64_image = None
     
-    # NEW LOGIC: Try to read text directly first. If no text, take a picture.
     if uploaded_file.type == 'application/pdf':
         doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
         page = doc.load_page(0) 
         extracted_text = page.get_text().strip()
         
-        # If the PDF is just a scanned image, it won't have text. Take an HD photo.
         if len(extracted_text) < 20:
             zoom_matrix = fitz.Matrix(2, 2) 
             pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
@@ -53,7 +81,6 @@ def extract_receipt_data(uploaded_file):
     Return ONLY the JSON object, nothing else. Do not use nulls. If a number is missing, use 0.
     """
     
-    # Send Text if we found text, otherwise send the Image
     if len(extracted_text) >= 20:
         messages_payload = [
             {"type": "text", "text": prompt},
@@ -71,10 +98,8 @@ def extract_receipt_data(uploaded_file):
         messages=[{"role": "user", "content": messages_payload}]
     )
     
-    try:
-        content = response.choices.message.content
-    except Exception:
-        content = str(response) 
+    # We now use our indestructible Swiss Army knife here!
+    content = safe_extract_json_from_response(response)
         
     if "```json" in content:
         content = content.split("```json").split("```").strip()
@@ -102,7 +127,7 @@ def extract_receipt_data(uploaded_file):
         "Amount Excl VAT": to_float(data.get("Amount Excl VAT")),
         "VAT": to_float(data.get("VAT")),
         "Total Amount": to_float(data.get("Total Amount")),
-        "_raw": content # We secretly pass the raw AI data out so we can read it on screen
+        "_raw": content 
     }
     
     return clean_data
@@ -128,13 +153,9 @@ if uploaded_files and employee_name:
             for file in uploaded_files:
                 try:
                     extracted_data = extract_receipt_data(file)
-                    
-                    # Pull the raw AI data out and show it in an expander for debugging!
-                    raw_ai_text = extracted_data.pop("_raw", "No raw data found.")
+                    # We can remove the raw text now since we know it works, but keeping it invisible for safety!
+                    extracted_data.pop("_raw", None)
                     st.session_state.expenses.append(extracted_data)
-                    
-                    with st.expander(f"🔍 See what the AI thought for {file.name}"):
-                        st.write(raw_ai_text)
                         
                 except Exception as e:
                     st.error(f"Could not process {file.name}. Error: {e}")
