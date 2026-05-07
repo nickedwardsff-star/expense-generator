@@ -63,10 +63,22 @@ def extract_receipt_data(uploaded_file):
         ]
     )
     
-    # Read the AI's response and turn it into a Python dictionary
-    extracted_data = json.loads(response.choices.message.content)
+    # --- ROCKET-PROOF PARSING ---
+    # This completely bypasses the 'list' error if it happens.
+    try:
+        content = response.choices.message.content
+    except Exception:
+        # Fallback dictionary extraction
+        resp_dict = response.dict() if hasattr(response, 'dict') else response.model_dump()
+        content = resp_dict['choices']['message']['content']
+
+    # Read the text and turn it into a dictionary
+    extracted_data = json.loads(content)
     
-    # Add the file name manually so we have the reference
+    # Safety Check: If the AI accidentally returned the JSON inside a list []
+    if isinstance(extracted_data, list):
+        extracted_data = extracted_data
+        
     extracted_data["File Name"] = uploaded_file.name
     
     return extracted_data
@@ -74,7 +86,13 @@ def extract_receipt_data(uploaded_file):
 # --- 3. HELPER TOOL FOR POUNDS & PENCE ---
 def split_pounds_pence(amount):
     """Forces the amount to have 2 decimal places and splits it without brackets."""
-    formatted_amount = f"{float(amount):.2f}"
+    try:
+        # Failsafe in case AI leaves the amount blank or returns letters
+        amount = float(amount)
+    except:
+        amount = 0.00
+        
+    formatted_amount = f"{amount:.2f}"
     pounds, pence = formatted_amount.split('.')
     return int(pounds), int(pence)
 
@@ -89,7 +107,7 @@ uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg',
 
 if uploaded_files and employee_name:
     if st.button(f"Process {len(uploaded_files)} Receipt(s)"):
-        with st.spinner("AI is analyzing the documents (this takes a few seconds per receipt)..."):
+        with st.spinner("AI is reading the documents (this takes a few seconds per receipt)..."):
             for file in uploaded_files:
                 try:
                     extracted_data = extract_receipt_data(file)
@@ -97,7 +115,7 @@ if uploaded_files and employee_name:
                 except Exception as e:
                     st.error(f"Could not process {file.name}. Error: {e}")
                     
-            st.success(f"Successfully processed {len(uploaded_files)} receipts!")
+            st.success(f"Finished processing!")
 
 # --- 5. DISPLAY AND TEMPLATE DOWNLOAD ---
 if len(st.session_state.expenses) > 0:
