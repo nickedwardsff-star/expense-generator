@@ -1,5 +1,5 @@
 streamlit
 pandas
 openpyxl
-openai
-pymupdf
+openai>=1.30.0
+PyMuPDF
