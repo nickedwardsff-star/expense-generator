@@ -10,6 +10,46 @@ from openai import OpenAI
 import fitz  # PyMuPDF (Our digital stapler!)
 import re  
 
+# --- 0. FARMFOODS BRANDING & PAGE CONFIG ---
+st.set_page_config(page_title="Farmfoods Expenses", page_icon="🛒", layout="wide") 
+
+# Inject Custom CSS for Farmfoods Colors (Green & Red)
+st.markdown("""
+    <style>
+        /* Main background tint */
+        .stApp {
+            background-color: #f9fbf9;
+        }
+        /* Farmfoods Green for Headers */
+        h1, h2, h3 {
+            color: #007a33 !important; 
+            font-weight: 800 !important;
+        }
+        /* Style primary buttons with Farmfoods Green */
+        .stButton>button, .stDownloadButton>button {
+            background-color: #007a33 !important;
+            color: white !important;
+            border-radius: 8px !important;
+            border: none !important;
+            font-weight: bold !important;
+            transition: all 0.3s ease !important;
+        }
+        /* Farmfoods Red for Button Hover Effects */
+        .stButton>button:hover, .stDownloadButton>button:hover {
+            background-color: #da291c !important;
+            color: white !important;
+            transform: scale(1.02);
+        }
+        /* Clean up the file uploader border */
+        .stFileUploader {
+            border: 2px dashed #007a33 !important;
+            border-radius: 10px !important;
+            padding: 10px !important;
+            background-color: #ffffff;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- 1. SETUP & AUTHENTICATION ---
 if 'expenses' not in st.session_state:
     st.session_state.expenses = []
@@ -137,10 +177,8 @@ def split_pounds_pence(amount):
     return int(pounds), int(pence)
 
 # --- 4. USER INTERFACE ---
-st.set_page_config(page_title="My Expense Form", layout="wide") 
-
-st.title("🧾 Bulk Expense Generator")
-st.write("Upload all your receipts for the month. The AI will read them, sort them by date, and build your submission pack.")
+st.title("🛒 Farmfoods Expense Generator")
+st.write("Upload all your receipts for the month. The AI will read them, sort them by date, and build your Farmfoods submission pack.")
 
 employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe")
 uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True)
@@ -250,7 +288,7 @@ if len(st.session_state.expenses) > 0:
             st.download_button(
                 label="📊 Download Excel Spreadsheet",
                 data=excel_buffer.getvalue(),
-                file_name=f"Expense_Report_{safe_name}.xlsx",
+                file_name=f"Farmfoods_Expense_Report_{safe_name}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
                 use_container_width=True
@@ -260,7 +298,7 @@ if len(st.session_state.expenses) > 0:
             st.download_button(
                 label="📑 Download Sorted Receipt Pack (PDF)",
                 data=pdf_bytes,
-                file_name=f"Sorted_Receipts_{safe_name}.pdf",
+                file_name=f"Farmfoods_Sorted_Receipts_{safe_name}.pdf",
                 mime="application/pdf",
                 type="primary",
                 use_container_width=True
