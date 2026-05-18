@@ -36,7 +36,6 @@ st.markdown("""
             padding: 10px !important;
             background-color: #ffffff;
         }
-        /* Make the progress bar green */
         .stProgress > div > div > div > div {
             background-color: #007a33;
         }
@@ -179,23 +178,17 @@ uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg',
 if uploaded_files and employee_name:
     if st.button("Process " + str(len(uploaded_files)) + " Receipt(s)"):
         
-        # --- THE NEW PROGRESS BAR ---
         progress_text = st.empty()
         progress_bar = st.progress(0)
         total_files = len(uploaded_files)
         
         for i, file in enumerate(uploaded_files):
-            # Update the text to show which file is being read
             progress_text.text("Reading receipt " + str(i + 1) + " of " + str(total_files) + "...")
-            
             try:
                 extracted_data = extract_receipt_data(file)
                 st.session_state.expenses.append(extracted_data)
             except Exception:
-                # Silently pass errors so yellow boxes don't appear
                 pass 
-                
-            # Update the progress bar
             progress_bar.progress((i + 1) / total_files)
             
         progress_text.text("Finished reading! Building your files...")
@@ -276,7 +269,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack (Top-Left Text Stamp)
+        # 3. Build the Master PDF pack (WITH BRUTE FORCE TEXT STAMPING)
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -303,12 +296,12 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE FIX: Top-Left, no background box, just pure bold red text
-                        text_rect = fitz.Rect(20, 20, 250, 60) 
-                        new_page.insert_textbox(text_rect, "REF: " + str(ref_id), fontsize=24, color=(0.85, 0.16, 0.11), fontname="helv-b", align=0)
+                        # THE FIX: Brute-force rubber stamping text onto exact Top-Left coordinates (x=20, y=50)
+                        # Increased fontsize to 40 so it doesn't shrink when zooming!
+                        target_point = fitz.Point(20, 50)
+                        new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=40, color=(0.85, 0.16, 0.11), fontname="helv-b")
                         
                 except Exception:
-                    # Silently pass errors
                     pass 
                     
         # 4. Create the dual download buttons
