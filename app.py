@@ -272,7 +272,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack (THE BULLETPROOF METHOD)
+        # 3. Build the Master PDF pack (THE BULLETPROOF HYBRID METHOD)
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -291,34 +291,52 @@ if len(st.session_state.expenses) > 0:
                     else:
                         continue
                     
-                    for page_num, page in enumerate(source_doc):
-                        # 1. Take a High-Def photograph
+                    # Range ensures we get every page safely
+                    for page_num in range(len(source_doc)):
+                        page = source_doc.load_page(page_num)
+                        
+                        # Take High-Def photograph
                         zoom_matrix = fitz.Matrix(1.5, 1.5)
                         pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
-                        # 2. Compress to JPEG to keep file size tiny
+                        # Compress to JPEG
                         img_bytes = pix.tobytes("jpeg")
                         
-                        # 3. Convert directly to PDF bytes (This bypasses the font bug entirely!)
+                        # Create clean PDF format from JPEG
                         img_doc = fitz.open(stream=img_bytes, filetype="jpeg")
-                        pdf_bytes = img_doc.convert_to_pdf()
+                        pdf_bytes_from_img = img_doc.convert_to_pdf()
                         
-                        # 4. Open it as a fully-structured PDF page
-                        flat_doc = fitz.open("pdf", pdf_bytes)
-                        flat_page = flat_doc
+                        # Open it as a fully-structured PDF
+                        flat_doc = fitz.open("pdf", pdf_bytes_from_img)
+                        flat_page = flat_doc.load_page(0) # Explicitly load the page object
                         
-                        # 5. Stamp the text using the standard text box command on the very first page
+                        # Stamp only the first page of each receipt
                         if page_num == 0:
                             try:
-                                # A generous invisible box in the top-left corner
-                                text_rect = fitz.Rect(20, 20, 300, 80)
-                                flat_page.insert_textbox(text_rect, "REF: " + str(ref_id), fontsize=24, color=(0.85, 0.16, 0.11), fontname="helv-b", align=0)
+                                # Draw white background box
+                                bg_rect = fitz.Rect(10, 10, 250, 70)
+                                if hasattr(flat_page, "draw_rect"):
+                                    flat_page.draw_rect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
+                                elif hasattr(flat_page, "drawRect"):
+                                    flat_page.drawRect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
+                                
+                                # Use the Adapter to stamp text (No Fonts required)
+                                target_point = fitz.Point(20, 50)
+                                ref_text = "REF: " + str(ref_id)
+                                red_color = (0.85, 0.16, 0.11)
+                                
+                                if hasattr(flat_page, "insert_text"):
+                                    flat_page.insert_text(target_point, ref_text, fontsize=30, color=red_color)
+                                elif hasattr(flat_page, "insertText"):
+                                    flat_page.insertText(target_point, ref_text, fontsize=30, color=red_color)
+                                    
                             except Exception as e:
                                 st.warning(f"Could not stamp {filename}: {str(e)}")
                                 
                         # Staple the formatted page into the final document
                         master_pdf.insert_pdf(flat_doc)
                         
+                        # Clean up memory
                         img_doc.close()
                         flat_doc.close()
                                 
