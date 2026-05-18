@@ -195,12 +195,12 @@ if len(st.session_state.expenses) > 0:
     df["Reference"] = [str(i) for i in range(1, len(df) + 1)] 
     df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%d/%m/%Y")
     
-    # Reorder columns for the on-screen display
+    # Show the table on screen (Keeping reference separate visually for the user)
     display_cols = ["Reference", "Date", "Vendor", "Reason", "Amount Excl VAT", "VAT", "Total Amount"]
     st.dataframe(df[display_cols], use_container_width=True)
     
     try:
-        # 2. Build the Excel File with STANDARD Decimals
+        # 2. Build the Excel File
         wb = openpyxl.load_workbook("Template_Expenses.xlsx") 
         ws = wb.active 
         
@@ -212,22 +212,24 @@ if len(st.session_state.expenses) > 0:
         for index, row in df.iterrows():
             current_row = start_row + index
             
-            ws.cell(row=current_row, column=1, value=row["Reference"])         
-            ws.cell(row=current_row, column=2, value=row["Date"])       
-            ws.cell(row=current_row, column=3, value=row["Vendor"])    
-            ws.cell(row=current_row, column=4, value=row["Reason"])    
-            ws.cell(row=current_row, column=5, value=row["Amount Excl VAT"]) 
-            ws.cell(row=current_row, column=6, value=row["VAT"])  
-            ws.cell(row=current_row, column=7, value=row["Total Amount"]) 
+            # --- THE FIX: Stitching the Reference into the Vendor name ---
+            audited_vendor = "REF " + str(row["Reference"]) + " - " + str(row["Vendor"])
             
-        # Grand Totals Row
+            ws.cell(row=current_row, column=1, value=row["Date"])       
+            ws.cell(row=current_row, column=2, value=audited_vendor)    
+            ws.cell(row=current_row, column=3, value=row["Reason"])    
+            ws.cell(row=current_row, column=4, value=row["Amount Excl VAT"]) 
+            ws.cell(row=current_row, column=5, value=row["VAT"])  
+            ws.cell(row=current_row, column=6, value=row["Total Amount"]) 
+            
+        # Grand Totals Row (Shifted columns to match the new 6-column layout)
         totals_row = start_row + len(df) + 1 
         bold_font = Font(bold=True)
         
-        ws.cell(row=totals_row, column=4, value="GRAND TOTAL").font = bold_font
-        ws.cell(row=totals_row, column=5, value=df["Amount Excl VAT"].sum()).font = bold_font
-        ws.cell(row=totals_row, column=6, value=df["VAT"].sum()).font = bold_font
-        ws.cell(row=totals_row, column=7, value=df["Total Amount"].sum()).font = bold_font
+        ws.cell(row=totals_row, column=3, value="GRAND TOTAL").font = bold_font
+        ws.cell(row=totals_row, column=4, value=df["Amount Excl VAT"].sum()).font = bold_font
+        ws.cell(row=totals_row, column=5, value=df["VAT"].sum()).font = bold_font
+        ws.cell(row=totals_row, column=6, value=df["Total Amount"].sum()).font = bold_font
         
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
@@ -243,7 +245,6 @@ if len(st.session_state.expenses) > 0:
             if file_obj:
                 ext = file_obj.name.split('.')[-1].lower()
                 try:
-                    # Convert file to a temporary PDF
                     if ext == 'pdf':
                         temp_doc = fitz.open(stream=file_obj.getvalue(), filetype="pdf")
                     elif ext in ['jpg', 'jpeg', 'png']:
@@ -253,7 +254,6 @@ if len(st.session_state.expenses) > 0:
                     else:
                         continue
                         
-                    # Physically stamp a red box on every page
                     for page in temp_doc:
                         rect = fitz.Rect(20, 20, 100, 50) 
                         page.draw_rect(rect, color=(0.85, 0.16, 0.11), fill=(0.85, 0.16, 0.11))
