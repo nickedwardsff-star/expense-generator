@@ -296,7 +296,7 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE FIX: Version adapter to prevent crashes on Streamlit Cloud!
+                        # THE FIX: Completely removed the "fontname" requirement so it uses internal defaults safely.
                         if page_num == 0:
                             try:
                                 target_point = fitz.Point(20, 35)
@@ -305,17 +305,12 @@ if len(st.session_state.expenses) > 0:
                                 
                                 # Try modern command (insert_text)
                                 if hasattr(new_page, "insert_text"):
-                                    try:
-                                        new_page.insert_text(target_point, ref_text, fontsize=14, color=red_color, fontname="helv-b")
-                                    except TypeError:
-                                        new_page.insert_text(target_point, ref_text, fontsize=14, color=red_color)
+                                    new_page.insert_text(target_point, ref_text, fontsize=14, color=red_color)
                                         
                                 # Fallback to old command (insertText)
                                 elif hasattr(new_page, "insertText"):
-                                    try:
-                                        new_page.insertText(target_point, ref_text, fontsize=14, color=red_color, fontname="helv-b")
-                                    except TypeError:
-                                        new_page.insertText(target_point, ref_text, fontsize=14, color=red_color)
+                                    new_page.insertText(target_point, ref_text, fontsize=14, color=red_color)
+                                    
                             except Exception as stamp_error:
                                 st.error("Stamp Error on " + filename + ": " + str(stamp_error))
                                 
