@@ -187,8 +187,8 @@ if uploaded_files and employee_name:
             try:
                 extracted_data = extract_receipt_data(file)
                 st.session_state.expenses.append(extracted_data)
-            except Exception:
-                pass 
+            except Exception as e:
+                st.warning(f"Error reading {file.name}: {str(e)}")
             progress_bar.progress((i + 1) / total_files)
             
         progress_text.text("Finished reading! Building your audited files...")
@@ -296,22 +296,28 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE BULLETPROOF FIX: Massive invisible box spanning the entire width of the page
+                        # THE UNBREAKABLE FIX: Raw Coordinates and Basic Shapes
                         if page_num == 0:
                             try:
-                                # Calculate dynamic font size (3% of page width, minimum size 18)
-                                dynamic_fontsize = max(18, int(pix.width * 0.03))
-                                pad = max(20, int(pix.width * 0.02))
+                                # 1. Calculate a dynamic scale so it's readable on massive images
+                                font_size = max(24, int(pix.width * 0.05))
                                 
-                                # This box stretches from the left edge to the right edge. It cannot run out of room!
-                                text_rect = fitz.Rect(pad, pad, pix.width - pad, pad + (dynamic_fontsize * 3))
+                                # 2. Draw a solid white block in the absolute top-left corner (0,0)
+                                # This guarantees the text won't be swallowed by dark backgrounds
+                                block_width = int(font_size * 5.5)
+                                block_height = int(font_size * 1.5)
+                                bg_rect = fitz.Rect(0, 0, block_width, block_height)
+                                new_page.draw_rect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
                                 
-                                new_page.insert_textbox(text_rect, "REF: " + str(ref_id), fontsize=dynamic_fontsize, color=(0.85, 0.16, 0.11), fontname="helv-b")
-                            except Exception:
-                                pass 
-                        
-                except Exception:
-                    pass 
+                                # 3. Stamp the text using raw (X, Y) tuple coordinates instead of fitz.Point
+                                text_x = int(font_size * 0.3)
+                                text_y = int(font_size * 1.1)
+                                new_page.insert_text((text_x, text_y), "REF: " + str(ref_id), fontsize=font_size, color=(0.85, 0.16, 0.11), fontname="helv-b")
+                            except Exception as e:
+                                st.warning(f"Could not stamp {filename}: {str(e)}")
+                                
+                except Exception as e:
+                    st.warning(f"Failed to process {filename}: {str(e)}")
                     
         # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
