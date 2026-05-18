@@ -16,7 +16,14 @@ st.set_page_config(page_title="Farmfoods Expenses", page_icon="🛒", layout="wi
 st.markdown("""
     <style>
         .stApp { background-color: #f9fbf9; }
+        
+        /* THE FIX: Force standard text to be dark so it is always readable, even in Dark Mode */
+        p, label, .stMarkdown, .stText, .stCheckbox label, li { 
+            color: #111111 !important; 
+        }
+        
         h1, h2, h3 { color: #007a33 !important; font-weight: 800 !important; }
+        
         .stButton>button, .stDownloadButton>button {
             background-color: #007a33 !important;
             color: white !important;
@@ -30,6 +37,12 @@ st.markdown("""
             color: white !important;
             transform: scale(1.02);
         }
+        
+        /* Ensure the text inside the green buttons stays white */
+        .stButton>button span, .stDownloadButton>button p {
+            color: white !important;
+        }
+        
         .stFileUploader {
             border: 2px dashed #007a33 !important;
             border-radius: 10px !important;
@@ -197,7 +210,6 @@ with col1:
     employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe", label_visibility="collapsed")
     
 with col2:
-    # THE FIX: Added a clear header and instruction text to make the mileage box obvious!
     st.write("**Mileage Claims**")
     st.caption("Driving for work? Check the box below to automatically calculate your maps.")
     claiming_mileage = st.checkbox("🚗 Yes, I am claiming mileage this month")
