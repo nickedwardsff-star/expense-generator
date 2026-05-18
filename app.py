@@ -52,7 +52,7 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 def to_float(val):
     try:
         if isinstance(val, str):
-            val = val.replace('£', '').replace('$', '').replace(',', '').strip()
+            val = val.replace('£', '').replace('$', '').replace(',', '').replace(' miles', '').strip()
         return round(float(val), 2)
     except:
         return 0.00
@@ -84,7 +84,8 @@ def safe_extract_json_from_response(response):
         
     return "{}"
 
-def extract_receipt_data(uploaded_file):
+# Notice we now pass the mileage_rate into this function!
+def extract_receipt_data(uploaded_file, mileage_rate):
     extracted_text = ""
     base64_image = None
     
@@ -100,22 +101,22 @@ def extract_receipt_data(uploaded_file):
     else:
         base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
 
+    # THE FIX: Updated AI instructions to handle Maps/Mileage
     prompt = (
-        "You are an expert accountant. Analyze this receipt and extract the data. "
-        "Return a valid JSON object with EXACTLY these keys: "
-        "'Date': Format as YYYY-MM-DD. "
-        "'Vendor': The name of the shop or company. "
-        "'Reason': A short, 2-4 word reason/category for the expense based on what was purchased (e.g. 'Staff Lunch', 'Parking', 'Office Supplies'). "
-        "'Amount Excl VAT': The subtotal before tax (number only). "
-        "'VAT': The tax amount (number only). "
-        "'Total Amount': The final total paid (number only). "
-        "Return ONLY the JSON object. Do not use nulls. If a number is missing, use 0."
+        "You are an expert accountant. Analyze the uploaded document.\n"
+        "If it is a SHOPPING RECEIPT, return a JSON object with: "
+        "'Date' (YYYY-MM-DD), 'Vendor' (shop name), 'Reason' (2-4 words), "
+        "'Amount Excl VAT' (number), 'VAT' (number), 'Total Amount' (number), 'Miles' (0).\n"
+        "If it is a MAP or DRIVING DIRECTIONS for a mileage claim, return a JSON object with: "
+        "'Date' (use today if missing), 'Vendor' (set to 'Mileage Claim'), "
+        "'Reason' (Route summary, e.g., 'Glasgow to Home'), 'Amount Excl VAT' (0), 'VAT' (0), 'Total Amount' (0), "
+        "'Miles' (extract the total distance in miles as a number)."
     )
     
     if len(extracted_text) >= 20:
         messages_payload = [
             {"type": "text", "text": prompt},
-            {"type": "text", "text": "Receipt Text:\n" + extracted_text}
+            {"type": "text", "text": "Document Text:\n" + extracted_text}
         ]
     else:
         messages_payload = [
@@ -156,39 +157,61 @@ def extract_receipt_data(uploaded_file):
                 data = value
                 break
 
-    clean_data = {
-        "Date": str(data.get("Date") or datetime.now().strftime("%Y-%m-%d")),
-        "Vendor": str(data.get("Vendor") or "Unknown Vendor"),
-        "Reason": str(data.get("Reason") or "General Expense"),
-        "File Name": uploaded_file.name,
-        "Amount Excl VAT": to_float(data.get("Amount Excl VAT")),
-        "VAT": to_float(data.get("VAT")),
-        "Total Amount": to_float(data.get("Total Amount"))
-    }
+    # THE FIX: If miles were detected, override the amounts with our custom math!
+    miles = to_float(data.get("Miles", 0))
+    
+    if miles > 0:
+        calc_total = round(miles * mileage_rate, 2)
+        clean_data = {
+            "Date": str(data.get("Date") or datetime.now().strftime("%Y-%m-%d")),
+            "Vendor": f"Mileage Claim ({miles} miles)",
+            "Reason": str(data.get("Reason") or "Business Travel"),
+            "File Name": uploaded_file.name,
+            "Amount Excl VAT": calc_total,
+            "VAT": 0.00,
+            "Total Amount": calc_total
+        }
+    else:
+        clean_data = {
+            "Date": str(data.get("Date") or datetime.now().strftime("%Y-%m-%d")),
+            "Vendor": str(data.get("Vendor") or "Unknown Vendor"),
+            "Reason": str(data.get("Reason") or "General Expense"),
+            "File Name": uploaded_file.name,
+            "Amount Excl VAT": to_float(data.get("Amount Excl VAT")),
+            "VAT": to_float(data.get("VAT")),
+            "Total Amount": to_float(data.get("Total Amount"))
+        }
     
     return clean_data
 
 # --- 3. USER INTERFACE ---
 st.title("🛒 Farmfoods Expense Generator")
 
-st.write("Upload your receipts to sort them, assign audit references, and build your submission pack.")
+st.info("👋 **Welcome!** Fill out your details below, and then upload all of your receipt and mileage files for the month to build your audited submission pack.")
 
-st.info("👋 **Welcome!** Please enter your full name below, and then upload all of your receipt files for the month to build your audited submission pack.")
+# THE FIX: Added a two-column layout for Name and Vehicle Type
+col1, col2 = st.columns(2)
+with col1:
+    employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe")
+with col2:
+    car_selection = st.selectbox("Vehicle Type (for Maps mileage claims):", ["Hybrid / Petrol / Diesel (30p / mile)", "Electric Vehicle (7p / mile)"])
+    
+mileage_rate = 0.07 if "Electric" in car_selection else 0.30
 
-employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe")
-uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload Receipts & Maps Screenshots", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True)
 
 if uploaded_files and employee_name:
-    if st.button("Process " + str(len(uploaded_files)) + " Receipt(s)"):
+    if st.button("Process " + str(len(uploaded_files)) + " File(s)"):
         
         progress_text = st.empty()
         progress_bar = st.progress(0)
         total_files = len(uploaded_files)
         
         for i, file in enumerate(uploaded_files):
-            progress_text.text("Reading receipt " + str(i + 1) + " of " + str(total_files) + "...")
+            progress_text.text("Reading file " + str(i + 1) + " of " + str(total_files) + "...")
             try:
-                extracted_data = extract_receipt_data(file)
+                # Pass the selected mileage rate into the extractor!
+                extracted_data = extract_receipt_data(file, mileage_rate)
                 st.session_state.expenses.append(extracted_data)
             except Exception as e:
                 st.warning(f"Could not extract data from {file.name}: {str(e)}")
@@ -291,36 +314,28 @@ if len(st.session_state.expenses) > 0:
                     else:
                         continue
                     
-                    # Range ensures we get every page safely
                     for page_num in range(len(source_doc)):
                         page = source_doc.load_page(page_num)
                         
-                        # Take High-Def photograph
                         zoom_matrix = fitz.Matrix(1.5, 1.5)
                         pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
-                        # Compress to JPEG
                         img_bytes = pix.tobytes("jpeg")
                         
-                        # Create clean PDF format from JPEG
                         img_doc = fitz.open(stream=img_bytes, filetype="jpeg")
                         pdf_bytes_from_img = img_doc.convert_to_pdf()
                         
-                        # Open it as a fully-structured PDF
                         flat_doc = fitz.open("pdf", pdf_bytes_from_img)
-                        flat_page = flat_doc.load_page(0) # Explicitly load the page object
+                        flat_page = flat_doc.load_page(0) 
                         
-                        # Stamp only the first page of each receipt
                         if page_num == 0:
                             try:
-                                # Draw white background box
                                 bg_rect = fitz.Rect(10, 10, 250, 70)
                                 if hasattr(flat_page, "draw_rect"):
                                     flat_page.draw_rect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
                                 elif hasattr(flat_page, "drawRect"):
                                     flat_page.drawRect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
                                 
-                                # Use the Adapter to stamp text (No Fonts required)
                                 target_point = fitz.Point(20, 50)
                                 ref_text = "REF: " + str(ref_id)
                                 red_color = (0.85, 0.16, 0.11)
@@ -333,10 +348,8 @@ if len(st.session_state.expenses) > 0:
                             except Exception as e:
                                 st.warning(f"Could not stamp {filename}: {str(e)}")
                                 
-                        # Staple the formatted page into the final document
                         master_pdf.insert_pdf(flat_doc)
                         
-                        # Clean up memory
                         img_doc.close()
                         flat_doc.close()
                                 
