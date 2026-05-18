@@ -296,20 +296,25 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE FIX: Completely removed the "fontname" requirement so it uses internal defaults safely.
                         if page_num == 0:
                             try:
-                                target_point = fitz.Point(20, 35)
+                                # THE NEW FIX: Dynamic scaling based on image width
+                                # Calculates font size as 3% of width (minimum size 24)
+                                dynamic_fontsize = max(24, int(pix.width * 0.03))
+                                
+                                # Calculates a safe top-left corner based on the new font size
+                                pad_x = max(20, int(pix.width * 0.02))
+                                pad_y = max(40, int(pix.width * 0.02) + dynamic_fontsize)
+                                
+                                target_point = fitz.Point(pad_x, pad_y)
                                 ref_text = "REF: " + str(ref_id)
                                 red_color = (0.85, 0.16, 0.11)
                                 
-                                # Try modern command (insert_text)
+                                # The un-crashable adapter
                                 if hasattr(new_page, "insert_text"):
-                                    new_page.insert_text(target_point, ref_text, fontsize=14, color=red_color)
-                                        
-                                # Fallback to old command (insertText)
+                                    new_page.insert_text(target_point, ref_text, fontsize=dynamic_fontsize, color=red_color)
                                 elif hasattr(new_page, "insertText"):
-                                    new_page.insertText(target_point, ref_text, fontsize=14, color=red_color)
+                                    new_page.insertText(target_point, ref_text, fontsize=dynamic_fontsize, color=red_color)
                                     
                             except Exception as stamp_error:
                                 st.error("Stamp Error on " + filename + ": " + str(stamp_error))
