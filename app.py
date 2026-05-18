@@ -157,14 +157,13 @@ def extract_receipt_data(uploaded_file, mileage_rate):
 
     miles = to_float(data.get("Miles", 0))
     
-    # THE FIX: Isolate the "Miles" into its own dedicated key in the dictionary
     if miles > 0 and mileage_rate > 0:
         calc_total = round(miles * mileage_rate, 2)
         clean_data = {
             "Date": str(data.get("Date") or datetime.now().strftime("%Y-%m-%d")),
             "Vendor": "Mileage Claim",
             "Reason": str(data.get("Reason") or "Business Travel"),
-            "Miles": miles,  # Saved separately!
+            "Miles": miles,  
             "File Name": uploaded_file.name,
             "Amount Excl VAT": calc_total,
             "VAT": 0.00,
@@ -175,7 +174,7 @@ def extract_receipt_data(uploaded_file, mileage_rate):
             "Date": str(data.get("Date") or datetime.now().strftime("%Y-%m-%d")),
             "Vendor": str(data.get("Vendor") or "Unknown Vendor"),
             "Reason": str(data.get("Reason") or "General Expense"),
-            "Miles": 0.00,   # Set to 0 if it's a normal receipt
+            "Miles": 0.00,   
             "File Name": uploaded_file.name,
             "Amount Excl VAT": to_float(data.get("Amount Excl VAT")),
             "VAT": to_float(data.get("VAT")),
@@ -187,20 +186,29 @@ def extract_receipt_data(uploaded_file, mileage_rate):
 # --- 3. USER INTERFACE ---
 st.title("🛒 Farmfoods Expense Generator")
 
+st.write("Upload your receipts and maps to automatically extract data, assign audit references, and build your submission pack.")
+
 st.info("👋 **Welcome!** Please enter your full name below, and then upload all of your receipt files for the month to build your audited submission pack.")
 
 col1, col2 = st.columns(2)
 with col1:
-    employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe")
+    st.write("**Employee Details**")
+    st.caption("Please provide the name for the final report.")
+    employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe", label_visibility="collapsed")
     
 with col2:
-    # THE FIX: Hidden Dropdown via a Checkbox Toggle
-    claiming_mileage = st.checkbox("🚗 I am claiming mileage this month")
+    # THE FIX: Added a clear header and instruction text to make the mileage box obvious!
+    st.write("**Mileage Claims**")
+    st.caption("Driving for work? Check the box below to automatically calculate your maps.")
+    claiming_mileage = st.checkbox("🚗 Yes, I am claiming mileage this month")
+    
     if claiming_mileage:
-        car_selection = st.selectbox("Vehicle Type:", ["Hybrid / Petrol / Diesel (30p / mile)", "Electric Vehicle (7p / mile)"])
+        car_selection = st.selectbox("Select your vehicle type:", ["Hybrid / Petrol / Diesel (30p / mile)", "Electric Vehicle (7p / mile)"])
         mileage_rate = 0.07 if "Electric" in car_selection else 0.30
     else:
         mileage_rate = 0.00
+
+st.divider()
 
 uploaded_files = st.file_uploader("Upload Receipts & Maps Screenshots", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True)
 
@@ -233,15 +241,8 @@ if len(st.session_state.expenses) > 0:
     df["Reference"] = [str(i) for i in range(1, len(df) + 1)] 
     df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%d/%m/%Y")
     
-    # THE FIX: Added "Miles" to the visual table on the app screen
     display_cols = ["Reference", "Date", "Vendor", "Reason", "Miles", "Amount Excl VAT", "VAT", "Total Amount"]
     st.dataframe(df[display_cols], use_container_width=True)
-    
-    st.warning(
-        "⚠️ **IMPORTANT:** Please double-check the details in the table above. "
-        "Make sure the AI has read all amounts and vendors correctly before "
-        "downloading your final pack!"
-    )
     
     try:
         # 2. Build the Excel File 
@@ -270,7 +271,6 @@ if len(st.session_state.expenses) > 0:
             cell_reason = ws.cell(row=current_row, column=3, value=row["Reason"])
             cell_reason.alignment = left_align
             
-            # THE FIX: Pushing the Miles data specifically into Column 4 (D) of your template
             if row["Miles"] > 0:
                 cell_miles = ws.cell(row=current_row, column=4, value=row["Miles"])
                 cell_miles.alignment = center_align
