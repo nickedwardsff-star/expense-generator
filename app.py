@@ -178,6 +178,7 @@ uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg',
 if uploaded_files and employee_name:
     if st.button("Process " + str(len(uploaded_files)) + " Receipt(s)"):
         
+        # The Live Progress Indicator
         progress_text = st.empty()
         progress_bar = st.progress(0)
         total_files = len(uploaded_files)
@@ -191,7 +192,7 @@ if uploaded_files and employee_name:
                 pass 
             progress_bar.progress((i + 1) / total_files)
             
-        progress_text.text("Finished reading! Building your files...")
+        progress_text.text("Finished reading! Building your audited files...")
         st.success("All done!")
 
 # --- 4. DISPLAY AND TEMPLATE DOWNLOAD ---
@@ -288,7 +289,8 @@ if len(st.session_state.expenses) > 0:
                     else:
                         continue
                     
-                    for page in source_doc:
+                    # We use enumerate to count the pages
+                    for page_num, page in enumerate(source_doc):
                         zoom_matrix = fitz.Matrix(1.5, 1.5)
                         pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
@@ -296,10 +298,16 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE FIX: Brute-force rubber stamping text onto exact Top-Left coordinates (x=20, y=50)
-                        # Increased fontsize to 40 so it doesn't shrink when zooming!
-                        target_point = fitz.Point(20, 50)
-                        new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=40, color=(0.85, 0.16, 0.11), fontname="helv-b")
+                        # THE FIX: Only stamp the very first page of each receipt
+                        if page_num == 0:
+                            # 1. Draw a massive solid white background box with a red border so text is readable
+                            bg_rect = fitz.Rect(20, 20, 260, 90)
+                            new_page.draw_rect(bg_rect, color=(0.85, 0.16, 0.11), fill=(1, 1, 1), width=4, overlay=True)
+                            
+                            # 2. Brute-force stamp the text into that white box. 
+                            # target_point is the bottom-left baseline of the text.
+                            target_point = fitz.Point(35, 70)
+                            new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=50, color=(0.85, 0.16, 0.11), fontname="helv-b", overlay=True)
                         
                 except Exception:
                     pass 
