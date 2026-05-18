@@ -17,7 +17,6 @@ st.markdown("""
     <style>
         .stApp { background-color: #f9fbf9; }
         
-        /* THE FIX: Force standard text to be dark so it is always readable, even in Dark Mode */
         p, label, .stMarkdown, .stText, .stCheckbox label, li { 
             color: #111111 !important; 
         }
@@ -38,7 +37,6 @@ st.markdown("""
             transform: scale(1.02);
         }
         
-        /* Ensure the text inside the green buttons stays white */
         .stButton>button span, .stDownloadButton>button p {
             color: white !important;
         }
@@ -170,11 +168,14 @@ def extract_receipt_data(uploaded_file, mileage_rate):
 
     miles = to_float(data.get("Miles", 0))
     
+    # THE FIX: Explicitly label the EV / Standard math in the Vendor column!
     if miles > 0 and mileage_rate > 0:
         calc_total = round(miles * mileage_rate, 2)
+        rate_label = "EV @ 7p/mile" if mileage_rate == 0.07 else "Standard @ 30p/mile"
+        
         clean_data = {
             "Date": str(data.get("Date") or datetime.now().strftime("%Y-%m-%d")),
-            "Vendor": "Mileage Claim",
+            "Vendor": f"Mileage ({rate_label})",
             "Reason": str(data.get("Reason") or "Business Travel"),
             "Miles": miles,  
             "File Name": uploaded_file.name,
