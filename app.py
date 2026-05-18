@@ -50,6 +50,15 @@ st.markdown("""
         .stProgress > div > div > div > div {
             background-color: #007a33;
         }
+        
+        /* Style for the new Metric Dashboard */
+        div[data-testid="metric-container"] {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -168,7 +177,6 @@ def extract_receipt_data(uploaded_file, mileage_rate):
 
     miles = to_float(data.get("Miles", 0))
     
-    # THE FIX: Explicitly label the EV / Standard math in the Vendor column!
     if miles > 0 and mileage_rate > 0:
         calc_total = round(miles * mileage_rate, 2)
         rate_label = "EV @ 7p/mile" if mileage_rate == 0.07 else "Standard @ 30p/mile"
@@ -199,29 +207,28 @@ def extract_receipt_data(uploaded_file, mileage_rate):
 
 # --- 3. USER INTERFACE ---
 st.title("🛒 Farmfoods Expense Generator")
-
 st.write("Upload your receipts and maps to automatically extract data, assign audit references, and build your submission pack.")
 
-st.info("👋 **Welcome!** Please enter your full name below, and then upload all of your receipt files for the month to build your audited submission pack.")
-
-col1, col2 = st.columns(2)
-with col1:
-    st.write("**Employee Details**")
-    st.caption("Please provide the name for the final report.")
-    employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe", label_visibility="collapsed")
+# THE UI UPGRADE: Grouping inputs neatly in a bordered container card
+with st.container(border=True):
+    st.info("👋 **Welcome!** Please enter your full name below, and then upload all of your receipt files for the month to build your audited submission pack.")
     
-with col2:
-    st.write("**Mileage Claims**")
-    st.caption("Driving for work? Check the box below to automatically calculate your maps.")
-    claiming_mileage = st.checkbox("🚗 Yes, I am claiming mileage this month")
-    
-    if claiming_mileage:
-        car_selection = st.selectbox("Select your vehicle type:", ["Hybrid / Petrol / Diesel (30p / mile)", "Electric Vehicle (7p / mile)"])
-        mileage_rate = 0.07 if "Electric" in car_selection else 0.30
-    else:
-        mileage_rate = 0.00
-
-st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("**Employee Details**")
+        st.caption("Please provide the name for the final report.")
+        employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe", label_visibility="collapsed")
+        
+    with col2:
+        st.write("**Mileage Claims**")
+        st.caption("Driving for work? Check the box below to automatically calculate your maps.")
+        claiming_mileage = st.checkbox("🚗 Yes, I am claiming mileage this month")
+        
+        if claiming_mileage:
+            car_selection = st.selectbox("Select your vehicle type:", ["Hybrid / Petrol / Diesel (30p / mile)", "Electric Vehicle (7p / mile)"], label_visibility="collapsed")
+            mileage_rate = 0.07 if "Electric" in car_selection else 0.30
+        else:
+            mileage_rate = 0.00
 
 uploaded_files = st.file_uploader("Upload Receipts & Maps Screenshots", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True)
 
@@ -241,8 +248,10 @@ if uploaded_files and employee_name:
                 st.warning(f"Could not extract data from {file.name}: {str(e)}")
             progress_bar.progress((i + 1) / total_files)
             
-        progress_text.text("Finished reading! Building your audited files...")
-        st.success("All done!")
+        progress_text.empty()
+        progress_bar.empty()
+        # THE UI UPGRADE: Elegant Toast Notification instead of a permanent success box
+        st.toast('Your audited files are ready!', icon='✅')
 
 # --- 4. DISPLAY AND TEMPLATE DOWNLOAD ---
 if len(st.session_state.expenses) > 0:
@@ -253,6 +262,18 @@ if len(st.session_state.expenses) > 0:
     df = df.sort_values(by="Date").reset_index(drop=True)
     df["Reference"] = [str(i) for i in range(1, len(df) + 1)] 
     df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%d/%m/%Y")
+    
+    # THE UI UPGRADE: Executive Summary Dashboard
+    total_receipts = len(df)
+    total_miles = df["Miles"].sum()
+    total_claim = df["Total Amount"].sum()
+    
+    met1, met2, met3 = st.columns(3)
+    met1.metric("Total Files Processed", total_receipts)
+    met2.metric("Total Business Miles", f"{total_miles:g} mi")
+    met3.metric("Grand Total Claimed", f"£{total_claim:,.2f}")
+    
+    st.write("") # Little bit of spacing before the table
     
     display_cols = ["Reference", "Date", "Vendor", "Reason", "Miles", "Amount Excl VAT", "VAT", "Total Amount"]
     st.dataframe(df[display_cols], use_container_width=True)
