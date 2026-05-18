@@ -188,7 +188,7 @@ if uploaded_files and employee_name:
                 extracted_data = extract_receipt_data(file)
                 st.session_state.expenses.append(extracted_data)
             except Exception as e:
-                st.warning(f"Error reading {file.name}: {str(e)}")
+                st.warning("Error reading " + file.name + ": " + str(e))
             progress_bar.progress((i + 1) / total_files)
             
         progress_text.text("Finished reading! Building your audited files...")
@@ -296,28 +296,17 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE UNBREAKABLE FIX: Raw Coordinates and Basic Shapes
+                        # THE FIX: Explicitly using the fitz.Point object to prevent crashing!
                         if page_num == 0:
                             try:
-                                # 1. Calculate a dynamic scale so it's readable on massive images
-                                font_size = max(24, int(pix.width * 0.05))
+                                # Coordinates: 20 pixels from the left edge, 40 pixels down from the top.
+                                target_point = fitz.Point(20, 40)
+                                new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=24, color=(0.85, 0.16, 0.11), fontname="helv-b")
+                            except Exception as stamp_error:
+                                st.warning("Stamp failed on " + filename + ": " + str(stamp_error))
                                 
-                                # 2. Draw a solid white block in the absolute top-left corner (0,0)
-                                # This guarantees the text won't be swallowed by dark backgrounds
-                                block_width = int(font_size * 5.5)
-                                block_height = int(font_size * 1.5)
-                                bg_rect = fitz.Rect(0, 0, block_width, block_height)
-                                new_page.draw_rect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
-                                
-                                # 3. Stamp the text using raw (X, Y) tuple coordinates instead of fitz.Point
-                                text_x = int(font_size * 0.3)
-                                text_y = int(font_size * 1.1)
-                                new_page.insert_text((text_x, text_y), "REF: " + str(ref_id), fontsize=font_size, color=(0.85, 0.16, 0.11), fontname="helv-b")
-                            except Exception as e:
-                                st.warning(f"Could not stamp {filename}: {str(e)}")
-                                
-                except Exception as e:
-                    st.warning(f"Failed to process {filename}: {str(e)}")
+                except Exception as file_error:
+                    st.warning("Failed to process " + filename + ": " + str(file_error))
                     
         # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
