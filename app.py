@@ -296,17 +296,23 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE FIX: Pin-drop text stamping. No boxes, no bounds to violate!
+                        # THE FIX: Dynamic text scaling relative to the image size!
                         if page_num == 0:
                             try:
-                                # Stamps exactly at X=20, Y=40. Size 16, Bold Red.
-                                target_point = fitz.Point(20, 40)
-                                new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=16, color=(0.85, 0.16, 0.11))
+                                # Scale font size to exactly 4% of the image width (minimum size 16)
+                                dynamic_fontsize = max(16, int(pix.width * 0.04))
+                                
+                                # Scale padding from the top/left edge so it doesn't get squished
+                                pad_left = max(20, int(pix.width * 0.03))
+                                pad_top = max(40, int(pix.width * 0.03) + dynamic_fontsize)
+                                
+                                target_point = fitz.Point(pad_left, pad_top)
+                                new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=dynamic_fontsize, color=(0.85, 0.16, 0.11), fontname="helv-b")
                             except Exception:
-                                pass # Silently ignore just the stamp if it fails, keeping the image intact
+                                pass 
                         
                 except Exception:
-                    pass # Silently ignore any entirely broken files, preventing yellow boxes
+                    pass 
                     
         # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
