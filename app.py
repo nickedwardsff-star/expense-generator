@@ -36,6 +36,10 @@ st.markdown("""
             padding: 10px !important;
             background-color: #ffffff;
         }
+        /* Make the progress bar green */
+        .stProgress > div > div > div > div {
+            background-color: #007a33;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -174,15 +178,28 @@ uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg',
 
 if uploaded_files and employee_name:
     if st.button("Process " + str(len(uploaded_files)) + " Receipt(s)"):
-        with st.spinner("AI is analyzing the documents..."):
-            for file in uploaded_files:
-                try:
-                    extracted_data = extract_receipt_data(file)
-                    st.session_state.expenses.append(extracted_data)
-                except Exception as e:
-                    st.error("Could not process " + file.name + ". Error: " + str(e))
-                    
-            st.success("Finished processing!")
+        
+        # --- THE NEW PROGRESS BAR ---
+        progress_text = st.empty()
+        progress_bar = st.progress(0)
+        total_files = len(uploaded_files)
+        
+        for i, file in enumerate(uploaded_files):
+            # Update the text to show which file is being read
+            progress_text.text("Reading receipt " + str(i + 1) + " of " + str(total_files) + "...")
+            
+            try:
+                extracted_data = extract_receipt_data(file)
+                st.session_state.expenses.append(extracted_data)
+            except Exception:
+                # Silently pass errors so yellow boxes don't appear
+                pass 
+                
+            # Update the progress bar
+            progress_bar.progress((i + 1) / total_files)
+            
+        progress_text.text("Finished reading! Building your files...")
+        st.success("All done!")
 
 # --- 4. DISPLAY AND TEMPLATE DOWNLOAD ---
 if len(st.session_state.expenses) > 0:
@@ -259,7 +276,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack (WITH JPEG COMPRESSION AND BETTER STAMP)
+        # 3. Build the Master PDF pack (Top-Left Text Stamp)
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -279,36 +296,20 @@ if len(st.session_state.expenses) > 0:
                         continue
                     
                     for page in source_doc:
-                        # 1. Take a compressed, optimized photo (1.5x zoom)
                         zoom_matrix = fitz.Matrix(1.5, 1.5)
                         pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
-                        # 2. Use JPEG compression to shrink file size by 80%+
                         img_bytes = pix.tobytes("jpeg")
-                        
-                        # 3. Create a brand new blank page matching the exact size
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
-                        
-                        # 4. Paste the highly compressed image directly onto the blank page
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # 5. Draw a compact, solid-red audit label in the TOP-RIGHT corner
-                        page_width = new_page.rect.width
-                        box_width = 120
-                        box_height = 36
+                        # THE FIX: Top-Left, no background box, just pure bold red text
+                        text_rect = fitz.Rect(20, 20, 250, 60) 
+                        new_page.insert_textbox(text_rect, "REF: " + str(ref_id), fontsize=24, color=(0.85, 0.16, 0.11), fontname="helv-b", align=0)
                         
-                        # Position it 15 pixels away from the top-right edge
-                        stamp_rect = fitz.Rect(page_width - box_width - 15, 15, page_width - 15, 15 + box_height) 
-                        
-                        # Solid Red background with a tiny dark border for contrast
-                        new_page.draw_rect(stamp_rect, color=(0.5, 0, 0), fill=(0.85, 0.16, 0.11), width=1, overlay=True)
-                        # Crisp white text centered inside the box
-                        new_page.insert_textbox(stamp_rect, "REF: " + str(ref_id), fontsize=18, color=(1, 1, 1), fontname="helv-b", align=1)
-                        
-                except Exception as e:
-                    st.warning("Could not stitch " + filename + " into the pack. Error: " + str(e))
-            else:
-                st.warning("Missing original file for " + filename + " (Did you clear the uploader?)")
+                except Exception:
+                    # Silently pass errors
+                    pass 
                     
         # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
@@ -337,8 +338,6 @@ if len(st.session_state.expenses) > 0:
                     type="primary",
                     use_container_width=True
                 )
-            else:
-                st.warning("⚠️ Cannot generate PDF pack (the receipts were cleared from the uploader box).")
         
     except FileNotFoundError:
         st.error("⚠️ Could not find 'Template_Expenses.xlsx'. Please make sure it is saved in the same folder as this script.")
