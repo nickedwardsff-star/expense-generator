@@ -187,8 +187,8 @@ if uploaded_files and employee_name:
             try:
                 extracted_data = extract_receipt_data(file)
                 st.session_state.expenses.append(extracted_data)
-            except Exception:
-                pass 
+            except Exception as e:
+                st.warning("⚠️ Issue reading " + file.name + ": " + str(e))
             progress_bar.progress((i + 1) / total_files)
             
         progress_text.text("Finished reading! Building your audited files...")
@@ -296,13 +296,16 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE FIX: Pure text, Top-Left (x=20, y=35), Size 14, Bold Red
+                        # THE FIX: Stamping pure text using a massive safe zone so it doesn't crash
                         if page_num == 0:
-                            target_point = fitz.Point(20, 35)
-                            new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=14, color=(0.85, 0.16, 0.11), fontname="helv-b", overlay=True)
+                            # A generous invisible bounding box (x0, y0, x1, y1)
+                            text_rect = fitz.Rect(20, 20, 400, 80)
+                            # Stamps pure text in the top left, Size 14, Farmfoods Red
+                            new_page.insert_textbox(text_rect, "REF: " + str(ref_id), fontsize=14, color=(0.85, 0.16, 0.11), fontname="helv-b")
                         
-                except Exception:
-                    pass 
+                except Exception as e:
+                    # Explicitly warn the user if a specific file breaks the stapler
+                    st.warning("⚠️ PDF Stamping Error on " + filename + ": " + str(e))
                     
         # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
