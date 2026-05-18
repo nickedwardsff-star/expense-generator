@@ -189,7 +189,6 @@ if len(st.session_state.expenses) > 0:
     st.divider()
     st.subheader("Current Report for " + employee_name)
     
-    # 1. Sort the data chronologically and assign Reference IDs
     df = pd.DataFrame(st.session_state.expenses)
     df = df.sort_values(by="Date").reset_index(drop=True)
     df["Reference"] = [str(i) for i in range(1, len(df) + 1)] 
@@ -260,7 +259,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack
+        # 3. Build the Master PDF pack (WITH DIGITAL PHOTOCOPIER FLATTENING)
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -271,25 +270,38 @@ if len(st.session_state.expenses) > 0:
             if file_obj:
                 ext = file_obj.name.split('.')[-1].lower()
                 try:
+                    # Open the original file
                     if ext == 'pdf':
-                        temp_doc = fitz.open(stream=file_obj.getvalue(), filetype="pdf")
+                        source_doc = fitz.open(stream=file_obj.getvalue(), filetype="pdf")
                     elif ext in ['jpg', 'jpeg', 'png']:
-                        img_doc = fitz.open(stream=file_obj.getvalue(), filetype=ext)
-                        pdf_bytes = img_doc.convert_to_pdf()
-                        temp_doc = fitz.open("pdf", pdf_bytes)
+                        source_doc = fitz.open(stream=file_obj.getvalue(), filetype=ext)
                     else:
                         continue
+                    
+                    # Photocopy and flatten every single page of the file
+                    for page in source_doc:
+                        # 1. Take a High-Def photo with a forced white background
+                        zoom_matrix = fitz.Matrix(2, 2)
+                        pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
-                    for page in temp_doc:
-                        rect = fitz.Rect(20, 20, 150, 60) 
-                        page.draw_rect(rect, color=(0.85, 0.16, 0.11), width=2, overlay=True)
-                        page.insert_textbox(rect, "REF: " + str(ref_id), fontsize=22, color=(0.85, 0.16, 0.11), fontname="helv-b", align=1)
+                        # 2. Turn the flat photo back into a pristine PDF page
+                        img_doc = fitz.open(stream=pix.tobytes("png"), filetype="png")
+                        pdf_bytes = img_doc.convert_to_pdf()
+                        flat_doc = fitz.open("pdf", pdf_bytes)
                         
-                    master_pdf.insert_pdf(temp_doc)
+                        # 3. Apply the hollow red audit stamp to the new flat page
+                        for flat_page in flat_doc:
+                            rect = fitz.Rect(20, 20, 150, 60) 
+                            flat_page.draw_rect(rect, color=(0.85, 0.16, 0.11), width=2, overlay=True)
+                            flat_page.insert_textbox(rect, "REF: " + str(ref_id), fontsize=22, color=(0.85, 0.16, 0.11), fontname="helv-b", align=1)
+                            
+                        # 4. Staple it into the master pack
+                        master_pdf.insert_pdf(flat_doc)
+                        
                 except Exception as e:
                     st.warning("Could not stitch " + filename + " into the pack. Error: " + str(e))
                     
-        # 4. Create the dual download buttons (WITH SAFETY CHECK)
+        # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
         
         st.write("### Download Your Audited Files")
@@ -306,7 +318,6 @@ if len(st.session_state.expenses) > 0:
             )
             
         with col2:
-            # THE FIX: Only try to create and download the PDF if there are actually pages in it!
             if master_pdf.page_count > 0:
                 pdf_bytes = master_pdf.tobytes()
                 st.download_button(
