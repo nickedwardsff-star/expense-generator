@@ -91,9 +91,9 @@ def extract_receipt_data(uploaded_file):
         extracted_text = page.get_text().strip()
         
         if len(extracted_text) < 20:
-            zoom_matrix = fitz.Matrix(2, 2) 
+            zoom_matrix = fitz.Matrix(1.5, 1.5) 
             pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
-            base64_image = base64.b64encode(pix.tobytes("png")).decode('utf-8')
+            base64_image = base64.b64encode(pix.tobytes("jpeg")).decode('utf-8')
     else:
         base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
 
@@ -117,7 +117,7 @@ def extract_receipt_data(uploaded_file):
     else:
         messages_payload = [
             {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64_image, "detail": "high"}}
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64_image, "detail": "high"}}
         ]
         
     response = client.chat.completions.create(
@@ -259,7 +259,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack (WITH BULLETPROOF IMAGE PASTING)
+        # 3. Build the Master PDF pack (WITH JPEG COMPRESSION AND BETTER STAMP)
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -279,20 +279,31 @@ if len(st.session_state.expenses) > 0:
                         continue
                     
                     for page in source_doc:
-                        # 1. Take a High-Def photo
-                        zoom_matrix = fitz.Matrix(2, 2)
+                        # 1. Take a compressed, optimized photo (1.5x zoom)
+                        zoom_matrix = fitz.Matrix(1.5, 1.5)
                         pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
-                        # 2. Create a brand new blank page matching the exact size
+                        # 2. Use JPEG compression to shrink file size by 80%+
+                        img_bytes = pix.tobytes("jpeg")
+                        
+                        # 3. Create a brand new blank page matching the exact size
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         
-                        # 3. Paste the image directly onto the blank page
-                        new_page.insert_image(new_page.rect, stream=pix.tobytes("png"))
+                        # 4. Paste the highly compressed image directly onto the blank page
+                        new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # 4. Draw the stamp over it
-                        rect = fitz.Rect(20, 20, 150, 60) 
-                        new_page.draw_rect(rect, color=(0.85, 0.16, 0.11), width=2, overlay=True)
-                        new_page.insert_textbox(rect, "REF: " + str(ref_id), fontsize=22, color=(0.85, 0.16, 0.11), fontname="helv-b", align=1)
+                        # 5. Draw a compact, solid-red audit label in the TOP-RIGHT corner
+                        page_width = new_page.rect.width
+                        box_width = 120
+                        box_height = 36
+                        
+                        # Position it 15 pixels away from the top-right edge
+                        stamp_rect = fitz.Rect(page_width - box_width - 15, 15, page_width - 15, 15 + box_height) 
+                        
+                        # Solid Red background with a tiny dark border for contrast
+                        new_page.draw_rect(stamp_rect, color=(0.5, 0, 0), fill=(0.85, 0.16, 0.11), width=1, overlay=True)
+                        # Crisp white text centered inside the box
+                        new_page.insert_textbox(stamp_rect, "REF: " + str(ref_id), fontsize=18, color=(1, 1, 1), fontname="helv-b", align=1)
                         
                 except Exception as e:
                     st.warning("Could not stitch " + filename + " into the pack. Error: " + str(e))
@@ -316,7 +327,6 @@ if len(st.session_state.expenses) > 0:
             )
             
         with col2:
-            # SAFETY NET: Only create the PDF button if pages actually exist!
             if master_pdf.page_count > 0:
                 pdf_bytes = master_pdf.tobytes()
                 st.download_button(
