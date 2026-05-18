@@ -188,7 +188,7 @@ if uploaded_files and employee_name:
                 extracted_data = extract_receipt_data(file)
                 st.session_state.expenses.append(extracted_data)
             except Exception as e:
-                st.warning("Error reading " + file.name + ": " + str(e))
+                st.error("Issue extracting data from " + file.name + ": " + str(e))
             progress_bar.progress((i + 1) / total_files)
             
         progress_text.text("Finished reading! Building your audited files...")
@@ -296,17 +296,31 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE FIX: Explicitly using the fitz.Point object to prevent crashing!
+                        # THE FIX: Version adapter to prevent crashes on Streamlit Cloud!
                         if page_num == 0:
                             try:
-                                # Coordinates: 20 pixels from the left edge, 40 pixels down from the top.
-                                target_point = fitz.Point(20, 40)
-                                new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=24, color=(0.85, 0.16, 0.11), fontname="helv-b")
+                                target_point = fitz.Point(20, 35)
+                                ref_text = "REF: " + str(ref_id)
+                                red_color = (0.85, 0.16, 0.11)
+                                
+                                # Try modern command (insert_text)
+                                if hasattr(new_page, "insert_text"):
+                                    try:
+                                        new_page.insert_text(target_point, ref_text, fontsize=14, color=red_color, fontname="helv-b")
+                                    except TypeError:
+                                        new_page.insert_text(target_point, ref_text, fontsize=14, color=red_color)
+                                        
+                                # Fallback to old command (insertText)
+                                elif hasattr(new_page, "insertText"):
+                                    try:
+                                        new_page.insertText(target_point, ref_text, fontsize=14, color=red_color, fontname="helv-b")
+                                    except TypeError:
+                                        new_page.insertText(target_point, ref_text, fontsize=14, color=red_color)
                             except Exception as stamp_error:
-                                st.warning("Stamp failed on " + filename + ": " + str(stamp_error))
+                                st.error("Stamp Error on " + filename + ": " + str(stamp_error))
                                 
                 except Exception as file_error:
-                    st.warning("Failed to process " + filename + ": " + str(file_error))
+                    st.error("Failed to build PDF page for " + filename + ": " + str(file_error))
                     
         # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
