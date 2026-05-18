@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import openpyxl
-from openpyxl.styles import Font, Alignment # NEW: Alignment tool added!
+from openpyxl.styles import Font, Alignment
 from datetime import datetime
 import json
 import base64
@@ -206,7 +206,6 @@ if len(st.session_state.expenses) > 0:
         ws['B3'] = employee_name 
         ws['H3'] = datetime.now().strftime("%d/%m/%Y")
         
-        # Define our alignment rules
         left_align = Alignment(horizontal='left')
         right_align = Alignment(horizontal='right')
         
@@ -216,7 +215,6 @@ if len(st.session_state.expenses) > 0:
             current_row = start_row + index
             audited_vendor = "REF " + str(row["Reference"]) + " - " + str(row["Vendor"])
             
-            # Write and Left-Align Text Columns
             cell_date = ws.cell(row=current_row, column=1, value=row["Date"])
             cell_date.alignment = left_align
             
@@ -226,7 +224,6 @@ if len(st.session_state.expenses) > 0:
             cell_reason = ws.cell(row=current_row, column=3, value=row["Reason"])
             cell_reason.alignment = left_align
             
-            # Write, Right-Align, and Format Number Columns (Skip Col 4)
             cell_excl = ws.cell(row=current_row, column=5, value=row["Amount Excl VAT"])
             cell_excl.alignment = right_align
             cell_excl.number_format = '#,##0.00'
@@ -239,7 +236,6 @@ if len(st.session_state.expenses) > 0:
             cell_total.alignment = right_align
             cell_total.number_format = '#,##0.00'
             
-        # Grand Totals Row 
         totals_row = start_row + len(df) + 1 
         bold_font = Font(bold=True)
         
@@ -264,7 +260,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack with Transparent Watermark Stamps!
+        # 3. Build the Master PDF pack
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -284,7 +280,6 @@ if len(st.session_state.expenses) > 0:
                     else:
                         continue
                         
-                    # THE FIX: Hollow Watermark Box (No fill color)
                     for page in temp_doc:
                         rect = fitz.Rect(20, 20, 150, 60) 
                         page.draw_rect(rect, color=(0.85, 0.16, 0.11), width=2, overlay=True)
@@ -294,9 +289,7 @@ if len(st.session_state.expenses) > 0:
                 except Exception as e:
                     st.warning("Could not stitch " + filename + " into the pack. Error: " + str(e))
                     
-        pdf_bytes = master_pdf.tobytes()
-        
-        # 4. Create the dual download buttons
+        # 4. Create the dual download buttons (WITH SAFETY CHECK)
         safe_name = employee_name.replace(" ", "_")
         
         st.write("### Download Your Audited Files")
@@ -313,14 +306,19 @@ if len(st.session_state.expenses) > 0:
             )
             
         with col2:
-            st.download_button(
-                label="📑 Download Audited Receipt Pack",
-                data=pdf_bytes,
-                file_name="Farmfoods_Audited_Receipts_" + safe_name + ".pdf",
-                mime="application/pdf",
-                type="primary",
-                use_container_width=True
-            )
+            # THE FIX: Only try to create and download the PDF if there are actually pages in it!
+            if master_pdf.page_count > 0:
+                pdf_bytes = master_pdf.tobytes()
+                st.download_button(
+                    label="📑 Download Audited Receipt Pack",
+                    data=pdf_bytes,
+                    file_name="Farmfoods_Audited_Receipts_" + safe_name + ".pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+            else:
+                st.warning("⚠️ Could not generate a PDF pack (no valid images/PDFs were found).")
         
     except FileNotFoundError:
         st.error("⚠️ Could not find 'Template_Expenses.xlsx'. Please make sure it is saved in the same folder as this script.")
