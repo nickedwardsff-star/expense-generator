@@ -208,7 +208,12 @@ if len(st.session_state.expenses) > 0:
     display_cols = ["Reference", "Date", "Vendor", "Reason", "Amount Excl VAT", "VAT", "Total Amount"]
     st.dataframe(df[display_cols], use_container_width=True)
     
-    st.warning("⚠️ **IMPORTANT:** Please double-check the details in the table above. Make sure the AI has read all amounts and vendors correctly before downloading your final pack!")
+    # THE FIX: Broken into a multi-line string so GitHub can't cut it off during copy-paste!
+    st.warning(
+        "⚠️ **IMPORTANT:** Please double-check the details in the table above. "
+        "Make sure the AI has read all amounts and vendors correctly before "
+        "downloading your final pack!"
+    )
     
     try:
         # 2. Build the Excel File 
@@ -272,7 +277,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack (THE BULLETPROOF HYBRID METHOD)
+        # 3. Build the Master PDF pack
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -291,36 +296,28 @@ if len(st.session_state.expenses) > 0:
                     else:
                         continue
                     
-                    # Range ensures we get every page safely
                     for page_num in range(len(source_doc)):
                         page = source_doc.load_page(page_num)
                         
-                        # Take High-Def photograph
                         zoom_matrix = fitz.Matrix(1.5, 1.5)
                         pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
-                        # Compress to JPEG
                         img_bytes = pix.tobytes("jpeg")
                         
-                        # Create clean PDF format from JPEG
                         img_doc = fitz.open(stream=img_bytes, filetype="jpeg")
                         pdf_bytes_from_img = img_doc.convert_to_pdf()
                         
-                        # Open it as a fully-structured PDF
                         flat_doc = fitz.open("pdf", pdf_bytes_from_img)
-                        flat_page = flat_doc.load_page(0) # Explicitly load the page object
+                        flat_page = flat_doc.load_page(0) 
                         
-                        # Stamp only the first page of each receipt
                         if page_num == 0:
                             try:
-                                # Draw white background box
                                 bg_rect = fitz.Rect(10, 10, 250, 70)
                                 if hasattr(flat_page, "draw_rect"):
                                     flat_page.draw_rect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
                                 elif hasattr(flat_page, "drawRect"):
                                     flat_page.drawRect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
                                 
-                                # Use the Adapter to stamp text (No Fonts required)
                                 target_point = fitz.Point(20, 50)
                                 ref_text = "REF: " + str(ref_id)
                                 red_color = (0.85, 0.16, 0.11)
@@ -333,10 +330,8 @@ if len(st.session_state.expenses) > 0:
                             except Exception as e:
                                 st.warning(f"Could not stamp {filename}: {str(e)}")
                                 
-                        # Staple the formatted page into the final document
                         master_pdf.insert_pdf(flat_doc)
                         
-                        # Clean up memory
                         img_doc.close()
                         flat_doc.close()
                                 
