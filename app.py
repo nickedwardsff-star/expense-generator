@@ -259,7 +259,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack (WITH DIGITAL PHOTOCOPIER FLATTENING)
+        # 3. Build the Master PDF pack (WITH BULLETPROOF IMAGE PASTING)
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -267,10 +267,10 @@ if len(st.session_state.expenses) > 0:
             ref_id = row["Reference"]
             
             file_obj = next((f for f in uploaded_files if f.name == filename), None)
+            
             if file_obj:
                 ext = file_obj.name.split('.')[-1].lower()
                 try:
-                    # Open the original file
                     if ext == 'pdf':
                         source_doc = fitz.open(stream=file_obj.getvalue(), filetype="pdf")
                     elif ext in ['jpg', 'jpeg', 'png']:
@@ -278,28 +278,26 @@ if len(st.session_state.expenses) > 0:
                     else:
                         continue
                     
-                    # Photocopy and flatten every single page of the file
                     for page in source_doc:
-                        # 1. Take a High-Def photo with a forced white background
+                        # 1. Take a High-Def photo
                         zoom_matrix = fitz.Matrix(2, 2)
                         pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
-                        # 2. Turn the flat photo back into a pristine PDF page
-                        img_doc = fitz.open(stream=pix.tobytes("png"), filetype="png")
-                        pdf_bytes = img_doc.convert_to_pdf()
-                        flat_doc = fitz.open("pdf", pdf_bytes)
+                        # 2. Create a brand new blank page matching the exact size
+                        new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         
-                        # 3. Apply the hollow red audit stamp to the new flat page
-                        for flat_page in flat_doc:
-                            rect = fitz.Rect(20, 20, 150, 60) 
-                            flat_page.draw_rect(rect, color=(0.85, 0.16, 0.11), width=2, overlay=True)
-                            flat_page.insert_textbox(rect, "REF: " + str(ref_id), fontsize=22, color=(0.85, 0.16, 0.11), fontname="helv-b", align=1)
-                            
-                        # 4. Staple it into the master pack
-                        master_pdf.insert_pdf(flat_doc)
+                        # 3. Paste the image directly onto the blank page
+                        new_page.insert_image(new_page.rect, stream=pix.tobytes("png"))
+                        
+                        # 4. Draw the stamp over it
+                        rect = fitz.Rect(20, 20, 150, 60) 
+                        new_page.draw_rect(rect, color=(0.85, 0.16, 0.11), width=2, overlay=True)
+                        new_page.insert_textbox(rect, "REF: " + str(ref_id), fontsize=22, color=(0.85, 0.16, 0.11), fontname="helv-b", align=1)
                         
                 except Exception as e:
                     st.warning("Could not stitch " + filename + " into the pack. Error: " + str(e))
+            else:
+                st.warning("Missing original file for " + filename + " (Did you clear the uploader?)")
                     
         # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
@@ -318,6 +316,7 @@ if len(st.session_state.expenses) > 0:
             )
             
         with col2:
+            # SAFETY NET: Only create the PDF button if pages actually exist!
             if master_pdf.page_count > 0:
                 pdf_bytes = master_pdf.tobytes()
                 st.download_button(
@@ -329,7 +328,7 @@ if len(st.session_state.expenses) > 0:
                     use_container_width=True
                 )
             else:
-                st.warning("⚠️ Could not generate a PDF pack (no valid images/PDFs were found).")
+                st.warning("⚠️ Cannot generate PDF pack (the receipts were cleared from the uploader box).")
         
     except FileNotFoundError:
         st.error("⚠️ Could not find 'Template_Expenses.xlsx'. Please make sure it is saved in the same folder as this script.")
