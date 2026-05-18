@@ -170,7 +170,9 @@ def extract_receipt_data(uploaded_file):
 
 # --- 3. USER INTERFACE ---
 st.title("🛒 Farmfoods Expense Generator")
-st.write("Upload your receipts. The AI will read them, sort them, assign audit references, and build your submission pack.")
+
+# NEW: Welcome Instructions
+st.info("👋 **Welcome!** Please enter your full name below, and then upload all of your receipt files for the month. The AI will automatically read them, sort them, and build your audited submission pack.")
 
 employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe")
 uploaded_files = st.file_uploader("Upload Receipts", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True)
@@ -188,7 +190,7 @@ if uploaded_files and employee_name:
                 extracted_data = extract_receipt_data(file)
                 st.session_state.expenses.append(extracted_data)
             except Exception as e:
-                st.error("Issue extracting data from " + file.name + ": " + str(e))
+                st.warning(f"Could not extract data from {file.name}: {str(e)}")
             progress_bar.progress((i + 1) / total_files)
             
         progress_text.text("Finished reading! Building your audited files...")
@@ -206,6 +208,9 @@ if len(st.session_state.expenses) > 0:
     
     display_cols = ["Reference", "Date", "Vendor", "Reason", "Amount Excl VAT", "VAT", "Total Amount"]
     st.dataframe(df[display_cols], use_container_width=True)
+    
+    # NEW: Review Warning before downloading
+    st.warning("⚠️ **IMPORTANT:** Please double-check the details in the table above. Make sure the AI has read all amounts and vendors correctly before downloading your final pack!")
     
     try:
         # 2. Build the Excel File 
@@ -298,29 +303,20 @@ if len(st.session_state.expenses) > 0:
                         
                         if page_num == 0:
                             try:
-                                # THE NEW FIX: Dynamic scaling based on image width
-                                # Calculates font size as 3% of width (minimum size 24)
-                                dynamic_fontsize = max(24, int(pix.width * 0.03))
+                                font_size = max(24, int(pix.width * 0.05))
+                                block_width = int(font_size * 5.5)
+                                block_height = int(font_size * 1.5)
+                                bg_rect = fitz.Rect(0, 0, block_width, block_height)
+                                new_page.draw_rect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
                                 
-                                # Calculates a safe top-left corner based on the new font size
-                                pad_x = max(20, int(pix.width * 0.02))
-                                pad_y = max(40, int(pix.width * 0.02) + dynamic_fontsize)
+                                text_x = int(font_size * 0.3)
+                                text_y = int(font_size * 1.1)
+                                new_page.insert_text((text_x, text_y), "REF: " + str(ref_id), fontsize=font_size, color=(0.85, 0.16, 0.11), fontname="helv-b")
+                            except Exception as e:
+                                st.warning(f"Could not stamp {filename}: {str(e)}")
                                 
-                                target_point = fitz.Point(pad_x, pad_y)
-                                ref_text = "REF: " + str(ref_id)
-                                red_color = (0.85, 0.16, 0.11)
-                                
-                                # The un-crashable adapter
-                                if hasattr(new_page, "insert_text"):
-                                    new_page.insert_text(target_point, ref_text, fontsize=dynamic_fontsize, color=red_color)
-                                elif hasattr(new_page, "insertText"):
-                                    new_page.insertText(target_point, ref_text, fontsize=dynamic_fontsize, color=red_color)
-                                    
-                            except Exception as stamp_error:
-                                st.error("Stamp Error on " + filename + ": " + str(stamp_error))
-                                
-                except Exception as file_error:
-                    st.error("Failed to build PDF page for " + filename + ": " + str(file_error))
+                except Exception as e:
+                    st.warning(f"Failed to process {filename}: {str(e)}")
                     
         # 4. Create the dual download buttons
         safe_name = employee_name.replace(" ", "_")
