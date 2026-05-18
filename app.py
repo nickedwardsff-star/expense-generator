@@ -171,7 +171,6 @@ def extract_receipt_data(uploaded_file):
 # --- 3. USER INTERFACE ---
 st.title("🛒 Farmfoods Expense Generator")
 
-# NEW: Welcome Instructions
 st.info("👋 **Welcome!** Please enter your full name below, and then upload all of your receipt files for the month. The AI will automatically read them, sort them, and build your audited submission pack.")
 
 employee_name = st.text_input("Enter your full name:", placeholder="e.g., Jane Doe")
@@ -209,7 +208,6 @@ if len(st.session_state.expenses) > 0:
     display_cols = ["Reference", "Date", "Vendor", "Reason", "Amount Excl VAT", "VAT", "Total Amount"]
     st.dataframe(df[display_cols], use_container_width=True)
     
-    # NEW: Review Warning before downloading
     st.warning("⚠️ **IMPORTANT:** Please double-check the details in the table above. Make sure the AI has read all amounts and vendors correctly before downloading your final pack!")
     
     try:
@@ -274,7 +272,7 @@ if len(st.session_state.expenses) > 0:
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack
+        # 3. Build the Master PDF pack (THE BULLETPROOF METHOD)
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -294,26 +292,35 @@ if len(st.session_state.expenses) > 0:
                         continue
                     
                     for page_num, page in enumerate(source_doc):
+                        # 1. Take a High-Def photograph
                         zoom_matrix = fitz.Matrix(1.5, 1.5)
                         pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                         
+                        # 2. Compress to JPEG to keep file size tiny
                         img_bytes = pix.tobytes("jpeg")
-                        new_page = master_pdf.new_page(width=pix.width, height=pix.height)
-                        new_page.insert_image(new_page.rect, stream=img_bytes)
                         
+                        # 3. Convert directly to PDF bytes (This bypasses the font bug entirely!)
+                        img_doc = fitz.open(stream=img_bytes, filetype="jpeg")
+                        pdf_bytes = img_doc.convert_to_pdf()
+                        
+                        # 4. Open it as a fully-structured PDF page
+                        flat_doc = fitz.open("pdf", pdf_bytes)
+                        flat_page = flat_doc
+                        
+                        # 5. Stamp the text using the standard text box command on the very first page
                         if page_num == 0:
                             try:
-                                font_size = max(24, int(pix.width * 0.05))
-                                block_width = int(font_size * 5.5)
-                                block_height = int(font_size * 1.5)
-                                bg_rect = fitz.Rect(0, 0, block_width, block_height)
-                                new_page.draw_rect(bg_rect, color=(1, 1, 1), fill=(1, 1, 1))
-                                
-                                text_x = int(font_size * 0.3)
-                                text_y = int(font_size * 1.1)
-                                new_page.insert_text((text_x, text_y), "REF: " + str(ref_id), fontsize=font_size, color=(0.85, 0.16, 0.11), fontname="helv-b")
+                                # A generous invisible box in the top-left corner
+                                text_rect = fitz.Rect(20, 20, 300, 80)
+                                flat_page.insert_textbox(text_rect, "REF: " + str(ref_id), fontsize=24, color=(0.85, 0.16, 0.11), fontname="helv-b", align=0)
                             except Exception as e:
                                 st.warning(f"Could not stamp {filename}: {str(e)}")
+                                
+                        # Staple the formatted page into the final document
+                        master_pdf.insert_pdf(flat_doc)
+                        
+                        img_doc.close()
+                        flat_doc.close()
                                 
                 except Exception as e:
                     st.warning(f"Failed to process {filename}: {str(e)}")
