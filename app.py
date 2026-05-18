@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import openpyxl
-from openpyxl.styles import Font 
+from openpyxl.styles import Font, Alignment # NEW: Alignment tool added!
 from datetime import datetime
 import json
 import base64
@@ -195,7 +195,6 @@ if len(st.session_state.expenses) > 0:
     df["Reference"] = [str(i) for i in range(1, len(df) + 1)] 
     df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%d/%m/%Y")
     
-    # Show the table on screen
     display_cols = ["Reference", "Date", "Vendor", "Reason", "Amount Excl VAT", "VAT", "Total Amount"]
     st.dataframe(df[display_cols], use_container_width=True)
     
@@ -207,36 +206,65 @@ if len(st.session_state.expenses) > 0:
         ws['B3'] = employee_name 
         ws['H3'] = datetime.now().strftime("%d/%m/%Y")
         
+        # Define our alignment rules
+        left_align = Alignment(horizontal='left')
+        right_align = Alignment(horizontal='right')
+        
         start_row = 6 
         
         for index, row in df.iterrows():
             current_row = start_row + index
-            
             audited_vendor = "REF " + str(row["Reference"]) + " - " + str(row["Vendor"])
             
-            # THE FIX: Shifting the columns to skip the Mileage column (Column 4)
-            ws.cell(row=current_row, column=1, value=row["Date"])             # Column A
-            ws.cell(row=current_row, column=2, value=audited_vendor)          # Column B
-            ws.cell(row=current_row, column=3, value=row["Reason"])           # Column C
-            # (Column 4 / D is skipped so it stays blank for Mileage)
-            ws.cell(row=current_row, column=5, value=row["Amount Excl VAT"])  # Column E
-            ws.cell(row=current_row, column=6, value=row["VAT"])              # Column F
-            ws.cell(row=current_row, column=7, value=row["Total Amount"])     # Column G
+            # Write and Left-Align Text Columns
+            cell_date = ws.cell(row=current_row, column=1, value=row["Date"])
+            cell_date.alignment = left_align
+            
+            cell_vendor = ws.cell(row=current_row, column=2, value=audited_vendor)
+            cell_vendor.alignment = left_align
+            
+            cell_reason = ws.cell(row=current_row, column=3, value=row["Reason"])
+            cell_reason.alignment = left_align
+            
+            # Write, Right-Align, and Format Number Columns (Skip Col 4)
+            cell_excl = ws.cell(row=current_row, column=5, value=row["Amount Excl VAT"])
+            cell_excl.alignment = right_align
+            cell_excl.number_format = '#,##0.00'
+            
+            cell_vat = ws.cell(row=current_row, column=6, value=row["VAT"])
+            cell_vat.alignment = right_align
+            cell_vat.number_format = '#,##0.00'
+            
+            cell_total = ws.cell(row=current_row, column=7, value=row["Total Amount"])
+            cell_total.alignment = right_align
+            cell_total.number_format = '#,##0.00'
             
         # Grand Totals Row 
         totals_row = start_row + len(df) + 1 
         bold_font = Font(bold=True)
         
-        # We put the "GRAND TOTAL" label in Column 4 (Mileage) so it sits right next to the numbers
         ws.cell(row=totals_row, column=4, value="GRAND TOTAL").font = bold_font
-        ws.cell(row=totals_row, column=5, value=df["Amount Excl VAT"].sum()).font = bold_font
-        ws.cell(row=totals_row, column=6, value=df["VAT"].sum()).font = bold_font
-        ws.cell(row=totals_row, column=7, value=df["Total Amount"].sum()).font = bold_font
+        ws.cell(row=totals_row, column=4).alignment = right_align
+        
+        total_excl = ws.cell(row=totals_row, column=5, value=df["Amount Excl VAT"].sum())
+        total_excl.font = bold_font
+        total_excl.alignment = right_align
+        total_excl.number_format = '#,##0.00'
+        
+        total_vat = ws.cell(row=totals_row, column=6, value=df["VAT"].sum())
+        total_vat.font = bold_font
+        total_vat.alignment = right_align
+        total_vat.number_format = '#,##0.00'
+        
+        total_final = ws.cell(row=totals_row, column=7, value=df["Total Amount"].sum())
+        total_final.font = bold_font
+        total_final.alignment = right_align
+        total_final.number_format = '#,##0.00'
         
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
         
-        # 3. Build the Master PDF pack with Audit Stamps!
+        # 3. Build the Master PDF pack with Transparent Watermark Stamps!
         master_pdf = fitz.open() 
         
         for index, row in df.iterrows():
@@ -256,10 +284,11 @@ if len(st.session_state.expenses) > 0:
                     else:
                         continue
                         
+                    # THE FIX: Hollow Watermark Box (No fill color)
                     for page in temp_doc:
-                        rect = fitz.Rect(20, 20, 100, 50) 
-                        page.draw_rect(rect, color=(0.85, 0.16, 0.11), fill=(0.85, 0.16, 0.11))
-                        page.insert_textbox(rect, "REF: " + str(ref_id), fontsize=14, color=(1, 1, 1), fontname="helv", align=1)
+                        rect = fitz.Rect(20, 20, 150, 60) 
+                        page.draw_rect(rect, color=(0.85, 0.16, 0.11), width=2, overlay=True)
+                        page.insert_textbox(rect, "REF: " + str(ref_id), fontsize=22, color=(0.85, 0.16, 0.11), fontname="helv-b", align=1)
                         
                     master_pdf.insert_pdf(temp_doc)
                 except Exception as e:
