@@ -296,18 +296,17 @@ if len(st.session_state.expenses) > 0:
                         new_page = master_pdf.new_page(width=pix.width, height=pix.height)
                         new_page.insert_image(new_page.rect, stream=img_bytes)
                         
-                        # THE FIX: Dynamic text scaling relative to the image size!
+                        # THE BULLETPROOF FIX: Massive invisible box spanning the entire width of the page
                         if page_num == 0:
                             try:
-                                # Scale font size to exactly 4% of the image width (minimum size 16)
-                                dynamic_fontsize = max(16, int(pix.width * 0.04))
+                                # Calculate dynamic font size (3% of page width, minimum size 18)
+                                dynamic_fontsize = max(18, int(pix.width * 0.03))
+                                pad = max(20, int(pix.width * 0.02))
                                 
-                                # Scale padding from the top/left edge so it doesn't get squished
-                                pad_left = max(20, int(pix.width * 0.03))
-                                pad_top = max(40, int(pix.width * 0.03) + dynamic_fontsize)
+                                # This box stretches from the left edge to the right edge. It cannot run out of room!
+                                text_rect = fitz.Rect(pad, pad, pix.width - pad, pad + (dynamic_fontsize * 3))
                                 
-                                target_point = fitz.Point(pad_left, pad_top)
-                                new_page.insert_text(target_point, "REF: " + str(ref_id), fontsize=dynamic_fontsize, color=(0.85, 0.16, 0.11), fontname="helv-b")
+                                new_page.insert_textbox(text_rect, "REF: " + str(ref_id), fontsize=dynamic_fontsize, color=(0.85, 0.16, 0.11), fontname="helv-b")
                             except Exception:
                                 pass 
                         
