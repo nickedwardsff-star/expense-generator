@@ -195,12 +195,12 @@ if len(st.session_state.expenses) > 0:
     df["Reference"] = [str(i) for i in range(1, len(df) + 1)] 
     df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%d/%m/%Y")
     
-    # Show the table on screen (Keeping reference separate visually for the user)
+    # Show the table on screen
     display_cols = ["Reference", "Date", "Vendor", "Reason", "Amount Excl VAT", "VAT", "Total Amount"]
     st.dataframe(df[display_cols], use_container_width=True)
     
     try:
-        # 2. Build the Excel File
+        # 2. Build the Excel File 
         wb = openpyxl.load_workbook("Template_Expenses.xlsx") 
         ws = wb.active 
         
@@ -212,24 +212,26 @@ if len(st.session_state.expenses) > 0:
         for index, row in df.iterrows():
             current_row = start_row + index
             
-            # --- THE FIX: Stitching the Reference into the Vendor name ---
             audited_vendor = "REF " + str(row["Reference"]) + " - " + str(row["Vendor"])
             
-            ws.cell(row=current_row, column=1, value=row["Date"])       
-            ws.cell(row=current_row, column=2, value=audited_vendor)    
-            ws.cell(row=current_row, column=3, value=row["Reason"])    
-            ws.cell(row=current_row, column=4, value=row["Amount Excl VAT"]) 
-            ws.cell(row=current_row, column=5, value=row["VAT"])  
-            ws.cell(row=current_row, column=6, value=row["Total Amount"]) 
+            # THE FIX: Shifting the columns to skip the Mileage column (Column 4)
+            ws.cell(row=current_row, column=1, value=row["Date"])             # Column A
+            ws.cell(row=current_row, column=2, value=audited_vendor)          # Column B
+            ws.cell(row=current_row, column=3, value=row["Reason"])           # Column C
+            # (Column 4 / D is skipped so it stays blank for Mileage)
+            ws.cell(row=current_row, column=5, value=row["Amount Excl VAT"])  # Column E
+            ws.cell(row=current_row, column=6, value=row["VAT"])              # Column F
+            ws.cell(row=current_row, column=7, value=row["Total Amount"])     # Column G
             
-        # Grand Totals Row (Shifted columns to match the new 6-column layout)
+        # Grand Totals Row 
         totals_row = start_row + len(df) + 1 
         bold_font = Font(bold=True)
         
-        ws.cell(row=totals_row, column=3, value="GRAND TOTAL").font = bold_font
-        ws.cell(row=totals_row, column=4, value=df["Amount Excl VAT"].sum()).font = bold_font
-        ws.cell(row=totals_row, column=5, value=df["VAT"].sum()).font = bold_font
-        ws.cell(row=totals_row, column=6, value=df["Total Amount"].sum()).font = bold_font
+        # We put the "GRAND TOTAL" label in Column 4 (Mileage) so it sits right next to the numbers
+        ws.cell(row=totals_row, column=4, value="GRAND TOTAL").font = bold_font
+        ws.cell(row=totals_row, column=5, value=df["Amount Excl VAT"].sum()).font = bold_font
+        ws.cell(row=totals_row, column=6, value=df["VAT"].sum()).font = bold_font
+        ws.cell(row=totals_row, column=7, value=df["Total Amount"].sum()).font = bold_font
         
         excel_buffer = io.BytesIO()
         wb.save(excel_buffer)
